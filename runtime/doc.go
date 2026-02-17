@@ -1,6 +1,9 @@
-// Package engruntime provides optional runtime primitives that compose with the
-// deterministic engine core.
+// Package engruntime provides optional runtime primitives for integration
+// layers.
 //
-// The package is intentionally domain-agnostic and currently includes:
-// - typed topic-based event streams keyed by topic and subscriber id
+// It currently offers typed topic-based event streams with explicit
+// subscription ownership and publish delivery controls.
+//
+// Core engine logic can remain deterministic while runtime concerns such as
+// fan-out and subscriber lifecycle are handled here.
 package engruntime

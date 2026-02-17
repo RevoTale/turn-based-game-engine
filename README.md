@@ -1,4 +1,7 @@
 # Turn-Based Game Engine
 
-Reusable, domain-agnostic primitives for turn-based multiplayer game backends.
+Reusable engine components are documented in package-level files:
 
+- `engine/turnbased/doc.go`
+- `engine/grid2d/doc.go`
+- `engine/runtime/doc.go`

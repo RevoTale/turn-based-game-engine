@@ -1,9 +1,8 @@
-// Package grid2d provides 2D board utilities for games.
+// Package grid2d provides generic 2D grid primitives for game state storage.
 //
-// Use it when you need:
-// - a grid with bounds checks
-// - per-cell data storage that only keeps written cells
-// - multiple grids managed by game or room id
+// It includes bounded grid indexing, sparse per-cell layers, and registries for
+// managing multiple grids and typed layers by key.
 //
-// The package is generic, so each game chooses its own id and cell value types.
+// The package is domain-agnostic and designed to compose with higher-level game
+// rules.
 package grid2d

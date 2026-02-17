@@ -1,10 +1,9 @@
-// Package turnbased tracks player turns for multiplayer turn-based games.
+// Package turnbased provides deterministic turn coordination for multiplayer
+// games.
 //
-// Use it when you want one place that:
-// - checks whose turn it is
-// - rotates turn order
-// - marks the game as finished when a winner appears
+// The package validates turn ownership, executes domain actions through a
+// resolver callback, advances turn order, and finalizes winner state.
 //
-// Game-specific rules stay in callbacks, so this package can be reused by
-// different games.
+// Domain rules stay outside the package. The package only manages generic turn
+// lifecycle semantics.
 package turnbased
