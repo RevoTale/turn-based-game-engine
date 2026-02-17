@@ -2,15 +2,20 @@ package grid2d
 
 import "fmt"
 
-// GridSet keeps independent grids addressed by id.
+// GridSet stores many grids by id.
 type GridSet[G comparable] struct {
 	grids map[G]*Grid
 }
 
+// NewGridSet creates an empty GridSet.
 func NewGridSet[G comparable]() *GridSet[G] {
 	return &GridSet[G]{grids: make(map[G]*Grid)}
 }
 
+// Create builds a new grid and stores it under id.
+//
+// Returns ErrNilGridSet for nil receiver, ErrGridExists when id already exists,
+// and validation errors from NewGrid for invalid dimensions.
 func (s *GridSet[G]) Create(id G, width, height int) (*Grid, error) {
 	if s == nil {
 		return nil, ErrNilGridSet
@@ -26,6 +31,10 @@ func (s *GridSet[G]) Create(id G, width, height int) (*Grid, error) {
 	return grid, nil
 }
 
+// Add stores an existing grid under id.
+//
+// Returns ErrNilGridSet for nil receiver, ErrNilGrid when grid is nil,
+// and ErrGridExists when id already exists.
 func (s *GridSet[G]) Add(id G, grid *Grid) error {
 	if s == nil {
 		return ErrNilGridSet
@@ -40,6 +49,9 @@ func (s *GridSet[G]) Add(id G, grid *Grid) error {
 	return nil
 }
 
+// Get returns grid by id.
+//
+// Second return value is false when id is not found.
 func (s *GridSet[G]) Get(id G) (*Grid, bool) {
 	if s == nil {
 		return nil, false
@@ -48,6 +60,9 @@ func (s *GridSet[G]) Get(id G) (*Grid, bool) {
 	return grid, ok
 }
 
+// Delete removes grid by id.
+//
+// Returns true when a grid was removed.
 func (s *GridSet[G]) Delete(id G) bool {
 	if s == nil {
 		return false
@@ -59,6 +74,7 @@ func (s *GridSet[G]) Delete(id G) bool {
 	return true
 }
 
+// Count returns how many grids are in the set.
 func (s *GridSet[G]) Count() int {
 	if s == nil {
 		return 0
@@ -66,7 +82,9 @@ func (s *GridSet[G]) Count() int {
 	return len(s.grids)
 }
 
-// ForEach iterates grids without making copies.
+// ForEach calls visit for each grid.
+//
+// Returning false from visit stops iteration.
 func (s *GridSet[G]) ForEach(visit func(id G, grid *Grid) bool) {
 	if s == nil || visit == nil {
 		return
@@ -78,12 +96,15 @@ func (s *GridSet[G]) ForEach(visit func(id G, grid *Grid) bool) {
 	}
 }
 
-// MultiLayerSpace manages typed layer spaces for many grids.
+// MultiLayerSpace stores per-grid LayerSpace values for many grids.
 type MultiLayerSpace[G comparable, K comparable, T comparable] struct {
 	gridSet *GridSet[G]
 	spaces  map[G]*LayerSpace[K, T]
 }
 
+// NewMultiLayerSpace creates an empty per-grid layer manager.
+//
+// Returns ErrNilGridSet when gridSet is nil.
 func NewMultiLayerSpace[G comparable, K comparable, T comparable](gridSet *GridSet[G]) (*MultiLayerSpace[G, K, T], error) {
 	if gridSet == nil {
 		return nil, ErrNilGridSet
@@ -94,7 +115,9 @@ func NewMultiLayerSpace[G comparable, K comparable, T comparable](gridSet *GridS
 	}, nil
 }
 
-// Space returns the typed layer space for a grid, creating it lazily.
+// Space returns layer space for gridID.
+//
+// If the layer space does not exist yet, Space creates it.
 func (m *MultiLayerSpace[G, K, T]) Space(gridID G) (*LayerSpace[K, T], error) {
 	if m == nil || m.gridSet == nil {
 		return nil, ErrNilGridSet
@@ -116,7 +139,8 @@ func (m *MultiLayerSpace[G, K, T]) Space(gridID G) (*LayerSpace[K, T], error) {
 	return space, nil
 }
 
-// SpaceIfExists returns an already-created typed layer space for a grid.
+// SpaceIfExists returns layer space only if it already exists.
+//
 // It never creates a new layer space.
 func (m *MultiLayerSpace[G, K, T]) SpaceIfExists(gridID G) (*LayerSpace[K, T], bool, error) {
 	if m == nil || m.gridSet == nil {
@@ -129,6 +153,7 @@ func (m *MultiLayerSpace[G, K, T]) SpaceIfExists(gridID G) (*LayerSpace[K, T], b
 	return space, ok, nil
 }
 
+// ForgetGrid removes layer data for gridID but keeps the grid itself.
 func (m *MultiLayerSpace[G, K, T]) ForgetGrid(gridID G) {
 	if m == nil {
 		return
@@ -136,6 +161,9 @@ func (m *MultiLayerSpace[G, K, T]) ForgetGrid(gridID G) {
 	delete(m.spaces, gridID)
 }
 
+// DeleteGrid removes layer data and then removes the grid from GridSet.
+//
+// Returns true when the grid was removed from GridSet.
 func (m *MultiLayerSpace[G, K, T]) DeleteGrid(gridID G) bool {
 	if m == nil || m.gridSet == nil {
 		return false
@@ -144,6 +172,9 @@ func (m *MultiLayerSpace[G, K, T]) DeleteGrid(gridID G) bool {
 	return m.gridSet.Delete(gridID)
 }
 
+// Count returns how many layer spaces currently exist.
+//
+// This is different from total grid count because spaces are created on demand.
 func (m *MultiLayerSpace[G, K, T]) Count() int {
 	if m == nil {
 		return 0

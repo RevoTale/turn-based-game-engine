@@ -1,11 +1,9 @@
-// Package grid2d provides reusable 2D grid primitives for turn-based engines.
+// Package grid2d provides 2D board utilities for games.
 //
-// Design goals:
-// - non-square grid support (width/height are independent)
-// - sparse lazy state storage (state maps allocate only when written)
-// - typed generic layers without runtime type assertions
-// - multi-grid support for matches that operate on multiple boards
+// Use it when you need:
+// - a grid with bounds checks
+// - per-cell data storage that only keeps written cells
+// - multiple grids managed by game or room id
 //
-// Package grid2d is domain-agnostic and can be composed with turn orchestration
-// from engine/turnbased.
+// The package is generic, so each game chooses its own id and cell value types.
 package grid2d

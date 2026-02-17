@@ -1,11 +1,10 @@
-// Package turnbased provides reusable turn orchestration for server-authoritative
-// multiplayer turn-based games.
+// Package turnbased tracks player turns for multiplayer turn-based games.
 //
-// Design goals:
-// - deterministic turn progression
-// - domain-agnostic action execution via callbacks
-// - explicit game-over lifecycle with validated winner
+// Use it when you want one place that:
+// - checks whose turn it is
+// - rotates turn order
+// - marks the game as finished when a winner appears
 //
-// This package intentionally avoids dependencies on app transport, storage, or
-// game-domain models so it can be extracted to a standalone repository.
+// Game-specific rules stay in callbacks, so this package can be reused by
+// different games.
 package turnbased

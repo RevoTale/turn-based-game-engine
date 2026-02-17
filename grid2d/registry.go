@@ -1,11 +1,13 @@
 package grid2d
 
-// LayerRegistry provides multi-grid typed layer management.
-// It is a convenience runtime wrapper over MultiLayerSpace.
+// LayerRegistry is a helper API to read and write layers across many grids.
 type LayerRegistry[G comparable, K comparable, T comparable] struct {
 	spaces *MultiLayerSpace[G, K, T]
 }
 
+// NewLayerRegistry creates a LayerRegistry backed by gridSet.
+//
+// Returns ErrNilGridSet when gridSet is nil.
 func NewLayerRegistry[G comparable, K comparable, T comparable](gridSet *GridSet[G]) (*LayerRegistry[G, K, T], error) {
 	if gridSet == nil {
 		return nil, ErrNilGridSet
@@ -17,7 +19,9 @@ func NewLayerRegistry[G comparable, K comparable, T comparable](gridSet *GridSet
 	return &LayerRegistry[G, K, T]{spaces: spaces}, nil
 }
 
-// Ensure returns an existing layer or creates it lazily if missing.
+// Ensure returns layer `layerKey` for `gridID`.
+//
+// If the layer does not exist, Ensure creates it.
 func (r *LayerRegistry[G, K, T]) Ensure(gridID G, layerKey K) (*SparseLayer[T], error) {
 	space, err := r.ensureSpace(gridID)
 	if err != nil {
@@ -29,8 +33,9 @@ func (r *LayerRegistry[G, K, T]) Ensure(gridID G, layerKey K) (*SparseLayer[T], 
 	return space.Create(layerKey)
 }
 
-// Get returns a layer if it exists.
-// It never creates layer space or layer entries.
+// Get returns a layer only if it already exists.
+//
+// It never creates new layer space or layers.
 func (r *LayerRegistry[G, K, T]) Get(gridID G, layerKey K) (*SparseLayer[T], bool, error) {
 	space, ok, err := r.existingSpace(gridID)
 	if err != nil {
@@ -43,6 +48,9 @@ func (r *LayerRegistry[G, K, T]) Get(gridID G, layerKey K) (*SparseLayer[T], boo
 	return layer, ok, nil
 }
 
+// Set writes value into an existing layer at position.
+//
+// Returns ErrLayerNotFound when layer space/layer does not exist.
 func (r *LayerRegistry[G, K, T]) Set(gridID G, layerKey K, pos Position, value T) error {
 	layer, err := r.existingLayer(gridID, layerKey)
 	if err != nil {
@@ -51,6 +59,9 @@ func (r *LayerRegistry[G, K, T]) Set(gridID G, layerKey K, pos Position, value T
 	return layer.Set(pos, value)
 }
 
+// DeleteValue removes value from an existing layer at position.
+//
+// Returns ErrLayerNotFound when layer space/layer does not exist.
 func (r *LayerRegistry[G, K, T]) DeleteValue(gridID G, layerKey K, pos Position) error {
 	layer, err := r.existingLayer(gridID, layerKey)
 	if err != nil {
@@ -59,7 +70,7 @@ func (r *LayerRegistry[G, K, T]) DeleteValue(gridID G, layerKey K, pos Position)
 	return layer.Delete(pos)
 }
 
-// EnsureSet lazily creates a layer and writes a value in a single call.
+// EnsureSet creates the layer if needed and then writes value at position.
 func (r *LayerRegistry[G, K, T]) EnsureSet(gridID G, layerKey K, pos Position, value T) error {
 	layer, err := r.Ensure(gridID, layerKey)
 	if err != nil {
@@ -68,6 +79,9 @@ func (r *LayerRegistry[G, K, T]) EnsureSet(gridID G, layerKey K, pos Position, v
 	return layer.Set(pos, value)
 }
 
+// DeleteLayer removes layer if it exists.
+//
+// It never creates missing layer space.
 func (r *LayerRegistry[G, K, T]) DeleteLayer(gridID G, layerKey K) (bool, error) {
 	space, ok, err := r.existingSpace(gridID)
 	if err != nil {
@@ -79,6 +93,7 @@ func (r *LayerRegistry[G, K, T]) DeleteLayer(gridID G, layerKey K) (bool, error)
 	return space.Delete(layerKey), nil
 }
 
+// DeleteGrid removes layer space and the underlying grid.
 func (r *LayerRegistry[G, K, T]) DeleteGrid(gridID G) bool {
 	if r == nil || r.spaces == nil {
 		return false
@@ -86,6 +101,7 @@ func (r *LayerRegistry[G, K, T]) DeleteGrid(gridID G) bool {
 	return r.spaces.DeleteGrid(gridID)
 }
 
+// LayerSpaceCount returns how many layer spaces currently exist.
 func (r *LayerRegistry[G, K, T]) LayerSpaceCount() int {
 	if r == nil || r.spaces == nil {
 		return 0
