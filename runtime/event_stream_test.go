@@ -71,6 +71,40 @@ func TestTopicStream_SubscribeReplacesExistingSubscriberID(t *testing.T) {
 	}
 }
 
+func TestTopicStream_OldContextCancelDoesNotRemoveReplacement(t *testing.T) {
+	t.Parallel()
+
+	stream := NewTopicStream[string, string, int]()
+	topic := "room-replace"
+
+	oldCtx, cancelOld := context.WithCancel(context.Background())
+	defer cancelOld()
+	_ = stream.Subscribe(oldCtx, topic, "same-id", SubscribeConfig{Buffer: 1})
+
+	newCtx, cancelNew := context.WithCancel(context.Background())
+	defer cancelNew()
+	newCh := stream.Subscribe(newCtx, topic, "same-id", SubscribeConfig{Buffer: 1})
+
+	cancelOld()
+
+	require.Eventually(t, func() bool {
+		return stream.TopicSubscriberCount(topic) == 1
+	}, 200*time.Millisecond, 10*time.Millisecond)
+
+	result := stream.Publish(topic, 22, PublishConfig{RemoveUndelivered: true})
+	assert.Equal(t, 1, result.Subscribers)
+	assert.Equal(t, 1, result.Delivered)
+	assert.Equal(t, 0, result.Removed)
+
+	select {
+	case got, open := <-newCh:
+		require.True(t, open)
+		assert.Equal(t, 22, got)
+	default:
+		t.Fatal("expected replacement subscriber to receive event")
+	}
+}
+
 func TestTopicStream_ContextCancelClosesSubscription(t *testing.T) {
 	t.Parallel()
 
@@ -110,5 +144,29 @@ func TestTopicStream_PublishTimeoutDropsStalledSubscriber(t *testing.T) {
 	assert.Equal(t, 1, result.Subscribers)
 	assert.Equal(t, 0, result.Delivered)
 	assert.Equal(t, 1, result.Removed)
+	assert.Equal(t, 0, stream.TopicSubscriberCount(topic))
+}
+
+func TestTopicStream_SubscribeNilContextRequiresExplicitUnsubscribe(t *testing.T) {
+	t.Parallel()
+
+	stream := NewTopicStream[string, string, string]()
+	topic := "room-nil-ctx"
+
+	ch := stream.Subscribe(nil, topic, "sub-1", SubscribeConfig{Buffer: 1})
+	require.NotNil(t, ch)
+	assert.Equal(t, 1, stream.TopicSubscriberCount(topic))
+
+	result := stream.Publish(topic, "hello", PublishConfig{RemoveUndelivered: true})
+	assert.Equal(t, 1, result.Delivered)
+
+	select {
+	case got := <-ch:
+		assert.Equal(t, "hello", got)
+	default:
+		t.Fatal("expected event on nil-context subscription")
+	}
+
+	assert.True(t, stream.Unsubscribe(topic, "sub-1"))
 	assert.Equal(t, 0, stream.TopicSubscriberCount(topic))
 }

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// controls subscriber behavior.
+// SubscribeConfig controls subscriber behavior.
 type SubscribeConfig struct {
 	// Buffer sets channel capacity.
 	// - 0 means unbuffered
@@ -14,7 +14,7 @@ type SubscribeConfig struct {
 	Buffer int
 }
 
-// controls stream delivery policy.
+// PublishConfig controls stream delivery policy.
 type PublishConfig struct {
 	// DeliveryTimeout bounds per-subscriber delivery wait.
 	// 0 means non-blocking send attempt.
@@ -23,7 +23,7 @@ type PublishConfig struct {
 	RemoveUndelivered bool
 }
 
-// summarizes one publish attempt.
+// PublishResult summarizes one publish attempt.
 type PublishResult struct {
 	Subscribers int
 	Delivered   int
@@ -46,19 +46,20 @@ type TopicStream[K comparable, S comparable, E any] struct {
 	topics map[K]map[S]chan E
 }
 
+// NewTopicStream creates an empty topic stream.
 func NewTopicStream[K comparable, S comparable, E any]() *TopicStream[K, S, E] {
 	return &TopicStream[K, S, E]{
 		topics: make(map[K]map[S]chan E),
 	}
 }
 
-// Subscribe registers or replaces subscriber in a topic and auto-cleans it on ctx.Done.
+// Subscribe registers or replaces subscriber in a topic.
+//
+// When ctx is not nil, the subscription is auto-removed on ctx.Done.
+// When ctx is nil, auto-removal is disabled and callers should use Unsubscribe.
 func (s *TopicStream[K, S, E]) Subscribe(ctx context.Context, topic K, subscriber S, cfg SubscribeConfig) <-chan E {
 	if s == nil {
 		return nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
 	}
 
 	buffer := cfg.Buffer
@@ -81,10 +82,12 @@ func (s *TopicStream[K, S, E]) Subscribe(ctx context.Context, topic K, subscribe
 	topicSubs[subscriber] = ch
 	s.mu.Unlock()
 
-	go func() {
-		<-ctx.Done()
-		s.removeSubscriber(topic, subscriber, true)
-	}()
+	if ctx != nil {
+		go func(subscriberCh chan E) {
+			<-ctx.Done()
+			s.removeSubscriberIfMatch(topic, subscriber, subscriberCh, true)
+		}(ch)
+	}
 
 	return ch
 }
@@ -109,7 +112,7 @@ func (s *TopicStream[K, S, E]) Publish(topic K, event E, cfg PublishConfig) Publ
 		Subscribers: len(targets),
 	}
 
-	var toRemove []S
+	var toRemove []streamTarget[S, E]
 	for _, target := range targets {
 		delivered, remove := deliverWithPolicy(target.ch, event, cfg)
 		if delivered {
@@ -117,12 +120,12 @@ func (s *TopicStream[K, S, E]) Publish(topic K, event E, cfg PublishConfig) Publ
 			continue
 		}
 		if remove {
-			toRemove = append(toRemove, target.subscriber)
+			toRemove = append(toRemove, target)
 		}
 	}
 
-	for _, subscriber := range toRemove {
-		if s.removeSubscriber(topic, subscriber, true) {
+	for _, target := range toRemove {
+		if s.removeSubscriberIfMatch(topic, target.subscriber, target.ch, true) {
 			result.Removed++
 		}
 	}
@@ -160,6 +163,10 @@ func (s *TopicStream[K, S, E]) snapshot(topic K) []streamTarget[S, E] {
 }
 
 func (s *TopicStream[K, S, E]) removeSubscriber(topic K, subscriber S, closeChannel bool) bool {
+	return s.removeSubscriberIfMatch(topic, subscriber, nil, closeChannel)
+}
+
+func (s *TopicStream[K, S, E]) removeSubscriberIfMatch(topic K, subscriber S, expected chan E, closeChannel bool) bool {
 	if s == nil {
 		return false
 	}
@@ -174,6 +181,9 @@ func (s *TopicStream[K, S, E]) removeSubscriber(topic K, subscriber S, closeChan
 
 	ch, ok := topicSubs[subscriber]
 	if !ok {
+		return false
+	}
+	if expected != nil && ch != expected {
 		return false
 	}
 	delete(topicSubs, subscriber)

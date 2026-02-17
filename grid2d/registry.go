@@ -120,6 +120,9 @@ func (r *LayerRegistry[G, K, T]) existingSpace(gridID G) (*LayerSpace[K, T], boo
 	if r == nil || r.spaces == nil {
 		return nil, false, ErrNilLayerRegistry
 	}
+	if _, ok := r.spaces.gridSet.Get(gridID); !ok {
+		return nil, false, ErrGridNotFound
+	}
 	return r.spaces.SpaceIfExists(gridID)
 }
 

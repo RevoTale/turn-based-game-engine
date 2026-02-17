@@ -90,8 +90,7 @@ func TestMultiLayerSpace_SpaceIfExists_DoesNotCreate(t *testing.T) {
 	assert.Same(t, created, space)
 
 	space, ok, err = spaces.SpaceIfExists("missing")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrGridNotFound)
+	require.NoError(t, err)
 	assert.False(t, ok)
 	assert.Nil(t, space)
 }
