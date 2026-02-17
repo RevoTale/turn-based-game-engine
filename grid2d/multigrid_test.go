@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/RevoTale/sea-battle-server/engine/turnbased"
+	"github.com/RevoTale/turn-based-game-engine/turnbased"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -1,21 +1,15 @@
-# Engine Directory
+# Turn-Based Game Engine
 
-`engine/` contains reusable game-engine code intended to be extracted into a standalone repository later.
+Reusable, domain-agnostic primitives for turn-based multiplayer game backends.
 
-## Current Modules
+## Packages
 
-- `turnbased/`: generic deterministic turn orchestration for multiplayer turn-based games.
-  - supports generic comparable player identifiers (`P comparable`)
-- `grid2d/`: generic non-square 2D grid primitives with sparse typed state layers.
-  - supports multiple independent grids with different dimensions
-  - supports typed layer spaces (for example `bool`, `string`, numeric states)
-- `runtime/`: scheduler and conditional event stream abstractions for app/runtime orchestration.
-- `errcode/`: unified mapping from engine errors to stable machine-readable codes.
+- `turnbased/`: deterministic turn orchestration for multiplayer turn-based games.
+- `grid2d/`: non-square 2D grid primitives with sparse typed state layers.
+- `runtime/`: scheduler and conditional event stream abstractions.
 
 ## Contract
 
-- Engine packages must stay domain-agnostic (no imports from `app`, `graph`, `battleship`, or transport layers).
-- Engine APIs should expose stable primitives that game domains adapt to.
-- Tests for engine behavior should live alongside engine code.
-
-Detailed documentation is in `docs/engine/README.md`.
+- Keep engine packages domain-agnostic.
+- Expose stable primitives that game domains can adapt to.
+- Keep behavior tests alongside the engine code.
