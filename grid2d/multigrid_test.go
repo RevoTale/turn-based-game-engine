@@ -63,6 +63,39 @@ func TestMultiLayerSpace_UsesGridSpecificBounds(t *testing.T) {
 	assert.ErrorIs(t, err, ErrOutOfBounds)
 }
 
+func TestMultiLayerSpace_SpaceIfExists_DoesNotCreate(t *testing.T) {
+	t.Parallel()
+
+	grids := NewGridSet[string]()
+	_, err := grids.Create("a", 3, 2)
+	require.NoError(t, err)
+
+	spaces, err := NewMultiLayerSpace[string, string, string](grids)
+	require.NoError(t, err)
+	assert.Equal(t, 0, spaces.Count())
+
+	space, ok, err := spaces.SpaceIfExists("a")
+	require.NoError(t, err)
+	assert.False(t, ok)
+	assert.Nil(t, space)
+	assert.Equal(t, 0, spaces.Count())
+
+	created, err := spaces.Space("a")
+	require.NoError(t, err)
+	assert.Equal(t, 1, spaces.Count())
+
+	space, ok, err = spaces.SpaceIfExists("a")
+	require.NoError(t, err)
+	require.True(t, ok)
+	assert.Same(t, created, space)
+
+	space, ok, err = spaces.SpaceIfExists("missing")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrGridNotFound)
+	assert.False(t, ok)
+	assert.Nil(t, space)
+}
+
 func TestTurnbasedIntegration_MultiGrid(t *testing.T) {
 	t.Parallel()
 

@@ -9,6 +9,8 @@
 - `grid2d/`: generic non-square 2D grid primitives with sparse typed state layers.
   - supports multiple independent grids with different dimensions
   - supports typed layer spaces (for example `bool`, `string`, numeric states)
+- `runtime/`: scheduler and conditional event stream abstractions for app/runtime orchestration.
+- `errcode/`: unified mapping from engine errors to stable machine-readable codes.
 
 ## Contract
 

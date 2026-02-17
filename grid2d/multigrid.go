@@ -116,6 +116,19 @@ func (m *MultiLayerSpace[G, K, T]) Space(gridID G) (*LayerSpace[K, T], error) {
 	return space, nil
 }
 
+// SpaceIfExists returns an already-created typed layer space for a grid.
+// It never creates a new layer space.
+func (m *MultiLayerSpace[G, K, T]) SpaceIfExists(gridID G) (*LayerSpace[K, T], bool, error) {
+	if m == nil || m.gridSet == nil {
+		return nil, false, ErrNilGridSet
+	}
+	if _, ok := m.gridSet.Get(gridID); !ok {
+		return nil, false, fmt.Errorf("%w: %v", ErrGridNotFound, gridID)
+	}
+	space, ok := m.spaces[gridID]
+	return space, ok, nil
+}
+
 func (m *MultiLayerSpace[G, K, T]) ForgetGrid(gridID G) {
 	if m == nil {
 		return
