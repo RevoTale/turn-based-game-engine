@@ -15,3 +15,10 @@
 - Follow the recommended Go programming language pattern
 - Follow the recommendations of the "100 Go Mistakes and how to aavoid them" book
 - Ensure tests are passing. 
+- Use idiomatic Go following standard conventions.
+### Documentation and comments
+
+- Every exported (capitalized) function, type, constant, and variable must have a doc comment immediately preceding its declaration, with no intervening blank lines.
+- Use clear, simple language and complete sentences.
+- The code explains "what" it does; comments should explain the reason for non-obvious design choices, potential side effects, or complex logic.
+- Outdated comments are detrimental. Update comments whenever you change the code. 

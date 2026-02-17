@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// SubscribeConfig controls subscriber behavior.
+// controls subscriber behavior.
 type SubscribeConfig struct {
 	// Buffer sets channel capacity.
 	// - 0 means unbuffered
@@ -14,7 +14,7 @@ type SubscribeConfig struct {
 	Buffer int
 }
 
-// PublishConfig controls stream delivery policy.
+// controls stream delivery policy.
 type PublishConfig struct {
 	// DeliveryTimeout bounds per-subscriber delivery wait.
 	// 0 means non-blocking send attempt.
@@ -23,7 +23,7 @@ type PublishConfig struct {
 	RemoveUndelivered bool
 }
 
-// PublishResult summarizes one publish attempt.
+// summarizes one publish attempt.
 type PublishResult struct {
 	Subscribers int
 	Delivered   int
