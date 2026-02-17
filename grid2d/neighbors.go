@@ -30,6 +30,17 @@ var mooreDirections = [...]Position{
 	{X: -1, Y: -1}, // Northwest
 }
 
+func directionsForNeighborhood(neighborhood Neighborhood) ([]Position, error) {
+	switch neighborhood {
+	case NeighborhoodVonNeumann:
+		return vonNeumannDirections[:], nil
+	case NeighborhoodMoore:
+		return mooreDirections[:], nil
+	default:
+		return nil, ErrInvalidNeighborhood
+	}
+}
+
 // ForEachNeighbor visits valid neighbor cells around center.
 //
 // It returns ErrNilGrid for a nil receiver and ErrOutOfBounds when center is
@@ -48,14 +59,9 @@ func (g *Grid) ForEachNeighbor(center Position, neighborhood Neighborhood, visit
 		return nil
 	}
 
-	var directions []Position
-	switch neighborhood {
-	case NeighborhoodVonNeumann:
-		directions = vonNeumannDirections[:]
-	case NeighborhoodMoore:
-		directions = mooreDirections[:]
-	default:
-		return ErrInvalidNeighborhood
+	directions, err := directionsForNeighborhood(neighborhood)
+	if err != nil {
+		return err
 	}
 
 	for _, d := range directions {

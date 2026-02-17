@@ -12,6 +12,7 @@ const (
 	CodeNotStraightLine     ErrorCode = "NOT_STRAIGHT_LINE"
 	CodeInvalidLineAxis     ErrorCode = "INVALID_LINE_AXIS"
 	CodeInvalidNeighborhood ErrorCode = "INVALID_NEIGHBORHOOD"
+	CodeNilMatcher          ErrorCode = "NIL_MATCHER"
 	CodeNilGrid             ErrorCode = "NIL_GRID"
 	CodeNilGridSet          ErrorCode = "NIL_GRID_SET"
 	CodeNilLayerRegistry    ErrorCode = "NIL_LAYER_REGISTRY"
@@ -29,6 +30,7 @@ var (
 	ErrNotStraightLine     = errors.New("positions must form a straight horizontal or vertical line")
 	ErrInvalidLineAxis     = errors.New("line axis is invalid")
 	ErrInvalidNeighborhood = errors.New("neighborhood is invalid")
+	ErrNilMatcher          = errors.New("position matcher is required")
 	ErrNilGrid             = errors.New("grid is required")
 	ErrNilGridSet          = errors.New("grid set is required")
 	ErrNilLayerRegistry    = errors.New("layer registry is required")
@@ -55,6 +57,8 @@ func CodeOf(err error) ErrorCode {
 		return CodeInvalidLineAxis
 	case errors.Is(err, ErrInvalidNeighborhood):
 		return CodeInvalidNeighborhood
+	case errors.Is(err, ErrNilMatcher):
+		return CodeNilMatcher
 	case errors.Is(err, ErrNilGrid):
 		return CodeNilGrid
 	case errors.Is(err, ErrNilGridSet):
