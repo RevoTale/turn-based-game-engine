@@ -6,6 +6,9 @@
 
 - `turnbased/`: generic deterministic turn orchestration for multiplayer turn-based games.
   - supports generic comparable player identifiers (`P comparable`)
+- `grid2d/`: generic non-square 2D grid primitives with sparse typed state layers.
+  - supports multiple independent grids with different dimensions
+  - supports typed layer spaces (for example `bool`, `string`, numeric states)
 
 ## Contract
 
