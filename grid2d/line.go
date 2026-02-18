@@ -110,3 +110,36 @@ func IsConsecutiveByAxis(positions []Position, axis LineAxis) bool {
 		return false
 	}
 }
+
+// LineExtremes returns edge positions for a straight horizontal or vertical line.
+//
+// The returned values are the first and last positions along line axis order.
+// It returns ErrEmptyPositions when positions is empty and ErrNotStraightLine
+// when positions are not in one row or one column.
+func LineExtremes(positions []Position) (first Position, last Position, axis LineAxis, err error) {
+	axis, err = DetectLineAxis(positions)
+	if err != nil {
+		return Position{}, Position{}, 0, err
+	}
+
+	sorted, err := SortPositionsByAxis(positions, axis)
+	if err != nil {
+		return Position{}, Position{}, 0, err
+	}
+	return sorted[0], sorted[len(sorted)-1], axis, nil
+}
+
+// LineExtensions returns one-step extension candidates for a line segment.
+//
+// `first` and `last` are expected to be extremes along the line axis.
+// Returns ErrInvalidLineAxis when axis is unknown.
+func LineExtensions(first Position, last Position, axis LineAxis) (before Position, after Position, err error) {
+	switch axis {
+	case LineAxisHorizontal:
+		return Position{X: first.X - 1, Y: first.Y}, Position{X: last.X + 1, Y: last.Y}, nil
+	case LineAxisVertical:
+		return Position{X: first.X, Y: first.Y - 1}, Position{X: last.X, Y: last.Y + 1}, nil
+	default:
+		return Position{}, Position{}, ErrInvalidLineAxis
+	}
+}

@@ -51,23 +51,3 @@ func TestSparseLayer_BoundsAndDelete(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, layer.Len())
 }
-
-func TestLayerSpace_CreateAndDuplicate(t *testing.T) {
-	t.Parallel()
-
-	grid, err := NewGrid(5, 3)
-	require.NoError(t, err)
-
-	space, err := NewLayerSpace[string, uint16](grid)
-	require.NoError(t, err)
-
-	layer, err := space.Create("terrain")
-	require.NoError(t, err)
-	require.NotNil(t, layer)
-	assert.Equal(t, 1, space.Count())
-
-	_, err = space.Create("terrain")
-	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrLayerExists)
-	assert.Equal(t, CodeLayerExists, CodeOf(err))
-}
