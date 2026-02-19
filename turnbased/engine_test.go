@@ -80,10 +80,35 @@ func TestAct_WinnerFinalizesGame(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.True(t, e.IsOver())
+	assert.Equal(t, MatchResultWinner, e.Result())
 
 	gotWinner, ok := e.Winner()
 	require.True(t, ok)
 	assert.Equal(t, winner, gotWinner)
+
+	_, err = e.Act("beta", 0, func(actor string, action int) (ActionOutcome[string], error) {
+		return PassTurn[string](), nil
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrGameOver)
+}
+
+func TestAct_DrawFinalizesGame(t *testing.T) {
+	t.Parallel()
+
+	e, err := New[string, int]([]string{"alpha", "beta"}, "alpha")
+	require.NoError(t, err)
+
+	_, err = e.Act("alpha", 0, func(actor string, action int) (ActionOutcome[string], error) {
+		return PassTurn[string]().WithDraw(), nil
+	})
+	require.NoError(t, err)
+	assert.True(t, e.IsOver())
+	assert.Equal(t, MatchResultDraw, e.Result())
+	assert.True(t, e.IsDraw())
+
+	_, hasWinner := e.Winner()
+	assert.False(t, hasWinner)
 
 	_, err = e.Act("beta", 0, func(actor string, action int) (ActionOutcome[string], error) {
 		return PassTurn[string](), nil
@@ -107,6 +132,23 @@ func TestAct_PropagatesResolverErrorWithoutChangingTurn(t *testing.T) {
 	assert.Equal(t, "first", e.CurrentPlayer())
 }
 
+func TestAct_RejectsInvalidTerminalOutcome(t *testing.T) {
+	t.Parallel()
+
+	e, err := New[string, int]([]string{"first", "second"}, "first")
+	require.NoError(t, err)
+
+	_, err = e.Act("first", 0, func(actor string, action int) (ActionOutcome[string], error) {
+		return ActionOutcome[string]{
+			result: MatchResult(99),
+		}, nil
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidOutcome)
+	assert.Equal(t, "first", e.CurrentPlayer())
+	assert.False(t, e.IsOver())
+}
+
 func TestActionOutcomeEncapsulation(t *testing.T) {
 	t.Parallel()
 
@@ -114,12 +156,23 @@ func TestActionOutcomeEncapsulation(t *testing.T) {
 	assert.False(t, outcome.KeepsTurn())
 	_, hasWinner := outcome.Winner()
 	assert.False(t, hasWinner)
+	assert.False(t, outcome.Draw())
+	assert.Equal(t, MatchResultOngoing, outcome.Result())
 
 	outcome = KeepTurn[string]().WithWinner("p1")
 	assert.True(t, outcome.KeepsTurn())
 	winner, hasWinner := outcome.Winner()
 	require.True(t, hasWinner)
 	assert.Equal(t, "p1", winner)
+	assert.False(t, outcome.Draw())
+	assert.Equal(t, MatchResultWinner, outcome.Result())
+
+	outcome = PassTurn[string]().WithDraw()
+	assert.False(t, outcome.KeepsTurn())
+	assert.True(t, outcome.Draw())
+	_, hasWinner = outcome.Winner()
+	assert.False(t, hasWinner)
+	assert.Equal(t, MatchResultDraw, outcome.Result())
 }
 
 func TestPlayerAccessors_NoCopyAPI(t *testing.T) {

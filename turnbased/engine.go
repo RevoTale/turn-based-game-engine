@@ -4,13 +4,13 @@ import (
 	"fmt"
 )
 
-// Engine tracks turn order, current turn, and winner state.
+// Engine tracks turn order, current turn, and terminal match state.
 type Engine[P comparable, A any] struct {
 	order         []P
 	indexByPlayer map[P]int
 	turnIndex     int
+	result        MatchResult
 	winner        P
-	hasWinner     bool
 }
 
 // New creates an Engine with player order and first turn.
@@ -89,20 +89,30 @@ func (e *Engine[P, A]) ForEachPlayer(visit func(player P) bool) {
 	}
 }
 
-// IsOver reports whether the game already has a winner.
+// IsOver reports whether the game already reached any terminal state.
 func (e *Engine[P, A]) IsOver() bool {
-	return e.hasWinner
+	return e.result != MatchResultOngoing
 }
 
 // Winner returns winning player when game is over.
 //
 // Second return value is false before game over.
 func (e *Engine[P, A]) Winner() (P, bool) {
-	if !e.hasWinner {
+	if e.result != MatchResultWinner {
 		var zero P
 		return zero, false
 	}
 	return e.winner, true
+}
+
+// IsDraw reports whether the game ended in draw.
+func (e *Engine[P, A]) IsDraw() bool {
+	return e.result == MatchResultDraw
+}
+
+// Result returns current terminal result of the match.
+func (e *Engine[P, A]) Result() MatchResult {
+	return e.result
 }
 
 // Act applies one player action through resolve callback.
@@ -111,6 +121,7 @@ func (e *Engine[P, A]) Winner() (P, bool) {
 // - known actor and correct turn
 // - no actions after game over
 // - winner (if provided by resolver) must be a known player
+// - outcome result must be valid
 //
 // Turn moves to next player unless outcome says to keep turn.
 // If resolve returns an error, turn state is unchanged.
@@ -135,12 +146,22 @@ func (e *Engine[P, A]) Act(actor P, action A, resolve ActionResolver[P, A]) (Act
 		return ActionOutcome[P]{}, err
 	}
 
+	switch outcome.Result() {
+	case MatchResultOngoing, MatchResultWinner, MatchResultDraw:
+	default:
+		return ActionOutcome[P]{}, ErrInvalidOutcome
+	}
+
 	if winner, hasWinner := outcome.Winner(); hasWinner {
 		if _, exists := e.indexByPlayer[winner]; !exists {
 			return ActionOutcome[P]{}, fmt.Errorf("%w: %v", ErrUnknownPlayer, winner)
 		}
 		e.winner = winner
-		e.hasWinner = true
+		e.result = MatchResultWinner
+		return outcome, nil
+	}
+	if outcome.Draw() {
+		e.result = MatchResultDraw
 		return outcome, nil
 	}
 

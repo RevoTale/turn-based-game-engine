@@ -2,7 +2,8 @@
 // games.
 //
 // The package validates turn ownership, executes domain actions through a
-// resolver callback, advances turn order, and finalizes winner state.
+// resolver callback, advances turn order, and finalizes match result state
+// (winner or draw).
 //
 // Domain rules stay outside the package. The package only manages generic turn
 // lifecycle semantics.

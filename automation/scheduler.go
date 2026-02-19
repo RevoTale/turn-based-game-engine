@@ -31,20 +31,31 @@ type SchedulerOptions struct {
 	Sleep func(time.Duration)
 }
 
-// Scheduler serializes automation per scope and can execute it sync or async.
-type Scheduler[K comparable, P any, R any] struct {
+// Runtime serializes automation per scope and can execute it sync or async.
+type Runtime[K comparable, P any, R any] interface {
+	// Run executes one scoped automation session synchronously.
+	Run(scope K, cfg SessionConfig[K, P, R]) ([]R, error)
+	// Trigger starts one scoped automation session asynchronously.
+	Trigger(scope K, cfg SessionConfig[K, P, R], onDone func(results []R, err error)) bool
+	// Wait blocks until all async sessions started via Trigger have finished.
+	Wait()
+	// IsActive reports whether the given scope is currently being processed.
+	IsActive(scope K) bool
+}
+
+type scheduler[K comparable, P any, R any] struct {
 	active scopedGuard[K]
 	sleep  func(time.Duration)
 	async  asyncTracker
 }
 
 // NewScheduler creates a scheduler with optional runtime options.
-func NewScheduler[K comparable, P any, R any](opts SchedulerOptions) *Scheduler[K, P, R] {
+func NewScheduler[K comparable, P any, R any](opts SchedulerOptions) Runtime[K, P, R] {
 	sleep := opts.Sleep
 	if sleep == nil {
 		sleep = time.Sleep
 	}
-	return &Scheduler[K, P, R]{
+	return &scheduler[K, P, R]{
 		sleep: sleep,
 	}
 }
@@ -52,7 +63,7 @@ func NewScheduler[K comparable, P any, R any](opts SchedulerOptions) *Scheduler[
 // Run executes one scoped automation session synchronously.
 //
 // Run returns ErrScopeBusy when the same scope is already active.
-func (s *Scheduler[K, P, R]) Run(scope K, cfg SessionConfig[K, P, R]) ([]R, error) {
+func (s *scheduler[K, P, R]) Run(scope K, cfg SessionConfig[K, P, R]) ([]R, error) {
 	if s == nil {
 		return nil, ErrScopeBusy
 	}
@@ -66,7 +77,7 @@ func (s *Scheduler[K, P, R]) Run(scope K, cfg SessionConfig[K, P, R]) ([]R, erro
 // Trigger starts one scoped automation session asynchronously.
 //
 // Trigger returns false when the same scope is already active.
-func (s *Scheduler[K, P, R]) Trigger(scope K, cfg SessionConfig[K, P, R], onDone func(results []R, err error)) bool {
+func (s *scheduler[K, P, R]) Trigger(scope K, cfg SessionConfig[K, P, R], onDone func(results []R, err error)) bool {
 	if s == nil {
 		return false
 	}
@@ -89,7 +100,7 @@ func (s *Scheduler[K, P, R]) Trigger(scope K, cfg SessionConfig[K, P, R], onDone
 }
 
 // Wait blocks until all async sessions started via Trigger have finished.
-func (s *Scheduler[K, P, R]) Wait() {
+func (s *scheduler[K, P, R]) Wait() {
 	if s == nil {
 		return
 	}
@@ -97,14 +108,14 @@ func (s *Scheduler[K, P, R]) Wait() {
 }
 
 // IsActive reports whether the given scope is currently being processed.
-func (s *Scheduler[K, P, R]) IsActive(scope K) bool {
+func (s *scheduler[K, P, R]) IsActive(scope K) bool {
 	if s == nil {
 		return false
 	}
 	return s.active.isActive(scope)
 }
 
-func (s *Scheduler[K, P, R]) runSession(scope K, cfg SessionConfig[K, P, R]) ([]R, error) {
+func (s *scheduler[K, P, R]) runSession(scope K, cfg SessionConfig[K, P, R]) ([]R, error) {
 	if cfg.MaxIterations <= 0 {
 		return nil, ErrInvalidMaxIterations
 	}
