@@ -131,9 +131,13 @@ func TestTurnbasedIntegration_Registry(t *testing.T) {
 	_, err = registry.CreateGrid(gridBeta, 8, 4)
 	require.NoError(t, err)
 
-	alphaLayer, err := registry.Ensure(gridAlpha, layerMain)
+	alphaSpace, err := registry.Space(gridAlpha)
 	require.NoError(t, err)
-	betaLayer, err := registry.Ensure(gridBeta, layerMain)
+	alphaLayer, err := alphaSpace.Ensure(layerMain)
+	require.NoError(t, err)
+	betaSpace, err := registry.Space(gridBeta)
+	require.NoError(t, err)
+	betaLayer, err := betaSpace.Ensure(layerMain)
 	require.NoError(t, err)
 
 	layers := map[gridID]*grid2d.SparseLayer[string]{

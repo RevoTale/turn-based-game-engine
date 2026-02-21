@@ -1,38 +1,131 @@
 # Turn-Based Game Engine
 
-Engine modules are independent and composable.
+## Principles
 
-## Modules
+- One runtime represents one match/session.
+- Execution is deterministic and sequential per runtime.
+- Modules are independent and composable.
+- Domain rules stay outside the engine.
 
-- `turnbased`: deterministic turn ownership and match result state.
-- `grid2d`: grid indexing and sparse layer state.
-- `runtime/events`: deterministic command and internal event execution tree.
-- `automation`: scheduling and delayed actor execution.
+## Runtime Schema
 
-## Independence
+```text
+external input
+  -> root command call
+    -> command handler
+      -> event chain (optional)
+        -> state update
+          -> result/effects
+```
 
-- `runtime/events` does not depend on `automation`.
-- `automation` does not depend on `runtime/events`.
-- Both can be used alone.
+Notes:
+- One command tree is executed at a time per runtime.
+- Parallelism is done by running many runtime instances, not by parallel command trees in one runtime.
 
-## Composition (Optional)
+## Composition Pattern
 
-Common pattern:
+- Feature: Shared domain logic
+  Description: Reuse pure rule functions across commands/events.
+  Example: `actor, outcome, err := rules.ApplyMove(patch, move)`
 
-1. `automation` decides when an actor should act.
-2. Automation callback triggers a root command via `events.Execute(...)`.
-3. `runtime/events` runs the command and all emitted internal events deterministically.
+- Feature: Local event payloads
+  Description: Keep payloads command-local; avoid one global shared payload type.
+  Example: `events.Command[playCommand]`, `events.Event[moveApplied]`
 
-## Responsibilities At A Glance
+## Public API
 
-- `Command` in `runtime/events`: root intent entrypoint.
-- `Event` in `runtime/events`: internal reaction node inside one execution tree.
-- `automation`: timing/retry/delay policy for when to invoke root commands.
+### `state`
 
-Detailed docs:
+- Feature: `state.New(initial)`
+  Description: Create a typed state store for one runtime.
+  Example: `store := state.New(GameState{})`
 
-- `engine/turnbased/doc.go`
-- `engine/grid2d/doc.go`
-- `engine/runtime/doc.go`
+- Feature: `(*Store).Do(run)`
+  Description: Run one state mutation under lock.
+  Example: `_, err := store.Do(func(tx *state.Tx[GameState]) error { return nil })`
+
+- Feature: `(*Store).View(read)`
+  Description: Read state consistently under lock.
+  Example: `err := store.View(func(s *GameState, v uint64) {})`
+
+- Feature: `(*Store).Version()`
+  Description: Get committed version number.
+  Example: `v, err := store.Version()`
+
+### `runtime/events`
+
+- Feature: `events.NewBuilder()`
+  Description: Start runtime command/event registration.
+  Example: `builder := events.NewBuilder()`
+
+- Feature: `events.RegisterCommand(...)`
+  Description: Register one root command handler.
+  Example: `play, err := events.RegisterCommand(builder, handlePlay, events.Hooks[Move]{})`
+
+- Feature: `events.RegisterEvent(...)`
+  Description: Register one internal event handler.
+  Example: `moved, err := events.RegisterEvent(builder, handleMoved, events.Hooks[Moved]{})`
+
+- Feature: `(*Builder).Build()`
+  Description: Build immutable runtime.
+  Example: `runtime, err := builder.Build()`
+
+- Feature: `events.ExecuteCommand(...)`
+  Description: Execute one root command tree.
+  Example: `err := events.ExecuteCommand(runtime, play, Move{Index: 4})`
+
+- Feature: `ctx.Emit(events.Next(...))`
+  Description: Emit follow-up internal event from command/event handler.
+  Example: `ctx.Emit(events.Next(moved, Moved{Index: 4}))`
+
+### `turnbased`
+
+- Feature: `turnbased.New(order, first)`
+  Description: Create deterministic turn engine.
+  Example: `tb, err := turnbased.New[Player, Move]([]Player{"A", "B"}, "A")`
+
+- Feature: `(*Engine).Act(actor, action, resolve)`
+  Description: Validate turn owner and apply one domain action.
+  Example: `outcome, err := tb.Act(player, move, resolve)`
+
+- Feature: `(*Engine).CurrentPlayer()`
+  Description: Get player that owns the current turn.
+  Example: `p := tb.CurrentPlayer()`
+
+- Feature: `(*Engine).Result()`
+  Description: Get match result state.
+  Example: `result := tb.Result()`
+
+### `grid2d`
+
+- Feature: `grid2d.NewGrid(w, h)`
+  Description: Create bounded grid geometry.
+  Example: `grid, err := grid2d.NewGrid(10, 10)`
+
+- Feature: `grid2d.NewSparseLayer[T](grid)`
+  Description: Create sparse typed cell storage on top of grid.
+  Example: `shots, err := grid2d.NewSparseLayer[CellStatus](grid)`
+
+- Feature: `(*SparseLayer).Set/Get`
+  Description: Write/read one cell value.
+  Example: `err = shots.Set(pos, Hit)`
+
+### `automation` (optional)
+
+- Feature: `automation.Run(config)`
+  Description: Run bounded actor loop in-process.
+  Example: `results, err := automation.Run(cfg)`
+
+- Feature: `automation.NewScheduler(opts)`
+  Description: Create sequential scheduler wrapper.
+  Example: `sched := automation.NewScheduler[int, Player, Action](automation.SchedulerOptions{})`
+
+- Feature: `Runtime.Run`
+  Description: Run one scoped automation session (sequential).
+  Example: `results, err := sched.Run(roomID, sessionCfg)`
+
+## More Docs
+
+- `engine/architecture.md`
 - `engine/runtime/events/schema.md`
 - `engine/examples/tic_tac_toe.md`

@@ -1,6 +1,7 @@
 package events
 
 import "fmt"
+import "sync"
 
 type queuedEvent struct {
 	id      EventID
@@ -58,25 +59,24 @@ func (d *dispatcher) dispatch(eventID EventID, payload any) error {
 
 // Runtime executes previously registered commands and emitted events.
 type Runtime struct {
+	mu         sync.Mutex
 	dispatcher dispatcher
 }
 
-func (r *Runtime) execute(commandID EventID, payload any) error {
+// ExecuteCommand executes one root command and drains its full emitted event
+// tree before it returns.
+func ExecuteCommand[T any](r *Runtime, command Command[T], payload T) error {
 	if r == nil {
 		return ErrNilRuntime
 	}
-	return r.dispatcher.dispatch(commandID, payload)
-}
 
-// Execute runs one root command and drains all emitted child events before it returns.
-func Execute[T any](r *Runtime, command Command[T], payload T) error {
-	if r == nil {
-		return ErrNilRuntime
-	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if _, ok := r.dispatcher.defs[command.id]; !ok {
 		return fmt.Errorf("%w: id=%d", ErrUnknownCommand, command.id)
 	}
-	return r.execute(command.id, payload)
+	return r.dispatcher.dispatch(command.id, payload)
 }
 
 // Context carries dispatch state while handlers and hooks execute.

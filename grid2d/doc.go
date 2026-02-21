@@ -2,6 +2,7 @@
 //
 // It includes bounded grid indexing, neighbor traversal, connected-component
 // traversal, sparse per-cell layers, and straight-line helpers.
+// Optional lock-aware layer wrappers are available for concurrent access.
 //
 // Optional multi-grid and layer-registry utilities are provided by the
 // sibling package grid2d/multi.

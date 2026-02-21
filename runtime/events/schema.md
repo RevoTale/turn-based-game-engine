@@ -1,35 +1,31 @@
 # Trigger Rights Schema
 
-Scope: trigger rights inside `runtime/events`.
+Scope: trigger rights for `runtime/events`.
 
 ## Flow
 
 ```text
-External/API code ───────────────┐
-automation callback (optional) ──┴──> Command (events.Execute)
-                                      |
-                                      v
-                           Command handler + hooks
-                                      |
-                                      v
-                          Event handler + hooks chain
-                              (ctx.Emit + events.Next)
+external/api or automation callback
+  -> root command (`events.ExecuteCommand`)
+    -> command handler
+      -> emitted events (`ctx.Emit(events.Next(...))`)
 ```
 
-## Allowed
+## Feature Matrix
 
-- External/API code -> `Command` via `events.Execute(...)`
-- Automation callback (if composed) -> `Command` via `events.Execute(...)`
-- Command handler/hook -> `Event` via `ctx.Emit(events.Next(...))`
-- Event handler/hook -> `Event` via `ctx.Emit(events.Next(...))`
+- Feature: External trigger
+  Description: External code starts one root command tree.
+  Example: `events.ExecuteCommand(runtime, command, payload)`
+
+- Feature: Internal trigger
+  Description: Command/event handlers emit only internal events.
+  Example: `ctx.Emit(events.Next(eventToken, payload))`
+
+- Feature: Execution mode
+  Description: One command tree executes at a time per runtime.
+  Example: two concurrent `events.ExecuteCommand(...)` calls are serialized per runtime.
 
 ## Not Allowed
 
-- External/API code -> `Event` directly
-- Command/event handlers -> `Command` directly
-
-## Responsibility
-
-- `Command`: root intent entrypoint.
-- `Event`: internal transition/reaction in one execution tree.
-- `automation`: optional timing/orchestration layer that may call commands.
+- External code calling event handlers directly.
+- Command/event handlers executing root commands.

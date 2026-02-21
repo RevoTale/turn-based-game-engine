@@ -3,6 +3,7 @@ package events_test
 import (
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/RevoTale/turn-based-game-engine/runtime/events"
 	"github.com/stretchr/testify/assert"
@@ -83,12 +84,12 @@ func TestDispatcherDispatchDrainsEmittedEventTree(t *testing.T) {
 	runtime, err := builder.Build()
 	require.NoError(t, err)
 
-	err = events.Execute(runtime, fire, fireCommand{Coordinate: "B4", Hit: true})
+	err = events.ExecuteCommand(runtime, fire, fireCommand{Coordinate: "B4", Hit: true})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"fire:B4", "hit:B4"}, trace)
 
 	trace = trace[:0]
-	err = events.Execute(runtime, fire, fireCommand{Coordinate: "A1", Hit: false})
+	err = events.ExecuteCommand(runtime, fire, fireCommand{Coordinate: "A1", Hit: false})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"fire:A1", "miss:A1"}, trace)
 }
@@ -117,7 +118,7 @@ func TestDispatcherOnFailRunsWhenHookFails(t *testing.T) {
 	runtime, err := builder.Build()
 	require.NoError(t, err)
 
-	err = events.Execute(runtime, command, 10)
+	err = events.ExecuteCommand(runtime, command, 10)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, expectedErr)
 	assert.True(t, onFailCalled)
@@ -131,7 +132,7 @@ func TestRuntimeRejectsUnknownRootCommand(t *testing.T) {
 	require.NoError(t, err)
 
 	var unknown events.Command[int]
-	err = events.Execute(runtime, unknown, 7)
+	err = events.ExecuteCommand(runtime, unknown, 7)
 	require.ErrorIs(t, err, events.ErrUnknownCommand)
 }
 
@@ -150,6 +151,77 @@ func TestRuntimeRejectsUnknownReturnedEvent(t *testing.T) {
 	runtime, err := builder.Build()
 	require.NoError(t, err)
 
-	err = events.Execute(runtime, root, 0)
+	err = events.ExecuteCommand(runtime, root, 0)
 	require.ErrorIs(t, err, events.ErrUnknownEvent)
+}
+
+func TestExecuteCommandRunsCommand(t *testing.T) {
+	t.Parallel()
+
+	builder := events.NewBuilder()
+	ran := false
+
+	command, err := events.RegisterCommand(builder, func(_ *events.Context, payload int) error {
+		ran = payload == 42
+		return nil
+	}, events.Hooks[int]{})
+	require.NoError(t, err)
+
+	runtime, err := builder.Build()
+	require.NoError(t, err)
+
+	require.NoError(t, events.ExecuteCommand(runtime, command, 42))
+	require.True(t, ran)
+}
+
+func TestRuntimeSerializesConcurrentCommandTrees(t *testing.T) {
+	t.Parallel()
+
+	builder := events.NewBuilder()
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	secondEntered := make(chan struct{})
+
+	command, err := events.RegisterCommand(builder, func(_ *events.Context, payload int) error {
+		if payload == 1 {
+			close(firstStarted)
+			<-releaseFirst
+			return nil
+		}
+		if payload == 2 {
+			close(secondEntered)
+		}
+		return nil
+	}, events.Hooks[int]{})
+	require.NoError(t, err)
+
+	runtime, err := builder.Build()
+	require.NoError(t, err)
+
+	errCh := make(chan error, 2)
+	go func() {
+		errCh <- events.ExecuteCommand(runtime, command, 1)
+	}()
+	<-firstStarted
+
+	go func() {
+		errCh <- events.ExecuteCommand(runtime, command, 2)
+	}()
+
+	select {
+	case <-secondEntered:
+		t.Fatal("second command entered before first completed")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	close(releaseFirst)
+
+	require.NoError(t, <-errCh)
+	require.NoError(t, <-errCh)
+
+	select {
+	case <-secondEntered:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("second command did not execute after first completion")
+	}
 }

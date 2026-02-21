@@ -1,17 +1,24 @@
-# Tic-Tac-Toe Runnable Example
+# Tic-Tac-Toe Example
 
-A runnable standalone module is available at:
+Path: `engine/examples/tic_tac_toe/`
 
-- `engine/examples/tic_tac_toe/`
+## Features
 
-It uses:
+- Feature: Single command entrypoint
+  Description: `Play(index)` executes one move deterministically.
+  Example: `err := game.Play(4)`
 
-- `turnbased.Engine` for turn order and terminal result ownership (`winner` and `draw`)
-- `runtime/events` with command-driven execution (`events.Execute`) and two-phase emissions (`ctx.Emit(events.Next(...))`)
-- `grid2d.Grid` + `grid2d.SparseLayer` for board layout and per-cell state
+- Feature: Locked state mutation
+  Description: Full command tree runs under one state lock.
+  Example: `store.Do(func(tx *state.Tx[gameState]) error { ... })`
 
-This example does not use `automation`; it demonstrates the events runtime in
-standalone mode.
+- Feature: Internal event chaining
+  Description: Move command emits follow-up events.
+  Example: `ctx.Emit(events.Next(moveApplied, payload))`
+
+- Feature: Shared pure rules
+  Description: Domain rules are reusable functions; handlers stay thin.
+  Example: `actor, outcome, err := applyMove(statePatch, move)`
 
 ## Run
 
@@ -26,19 +33,3 @@ go run .
 cd engine/examples/tic_tac_toe
 go test ./...
 ```
-
-## Files
-
-- `engine/examples/tic_tac_toe/go.mod`: standalone module config (`replace` points to local engine)
-- `engine/examples/tic_tac_toe/main.go`: showcase runner
-- `engine/examples/tic_tac_toe/game_test.go`: behavior tests (win, draw, invalid moves)
-- `engine/examples/tic_tac_toe/tictactoe/actions.go`: domain actions and error contract
-- `engine/examples/tic_tac_toe/tictactoe/events.go`: event payloads and event registration
-- `engine/examples/tic_tac_toe/tictactoe/game.go`: game runtime and board mechanics
-
-## Design Notes
-
-- `Play(index)` is the single command entrypoint.
-- `Play` is self-locked (`sync.Mutex`) for deterministic single-writer updates.
-- The root event validates/applies a move and returns follow-up events.
-- Follow-up events are dispatched in deterministic order by the engine dispatcher.

@@ -52,6 +52,17 @@ func (s *LayerSpace[K, T]) Create(key K) (*grid2d.SparseLayer[T], error) {
 	return layer, nil
 }
 
+// Ensure returns layer by key and creates it when missing.
+func (s *LayerSpace[K, T]) Ensure(key K) (*grid2d.SparseLayer[T], error) {
+	if s == nil || s.grid == nil {
+		return nil, grid2d.ErrNilGrid
+	}
+	if layer, ok := s.layers[key]; ok {
+		return layer, nil
+	}
+	return s.Create(key)
+}
+
 // Get returns layer by key.
 //
 // Second return value is false when key is missing.

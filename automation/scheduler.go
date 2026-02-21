@@ -1,6 +1,7 @@
 package automation
 
 import (
+	"sync"
 	"time"
 )
 
@@ -31,22 +32,20 @@ type SchedulerOptions struct {
 	Sleep func(time.Duration)
 }
 
-// Runtime serializes automation per scope and can execute it sync or async.
+// Runtime serializes automation execution and exposes one synchronous session
+// runner.
 type Runtime[K comparable, P any, R any] interface {
 	// Run executes one scoped automation session synchronously.
 	Run(scope K, cfg SessionConfig[K, P, R]) ([]R, error)
-	// Trigger starts one scoped automation session asynchronously.
-	Trigger(scope K, cfg SessionConfig[K, P, R], onDone func(results []R, err error)) bool
-	// Wait blocks until all async sessions started via Trigger have finished.
-	Wait()
 	// IsActive reports whether the given scope is currently being processed.
 	IsActive(scope K) bool
 }
 
 type scheduler[K comparable, P any, R any] struct {
-	active scopedGuard[K]
-	sleep  func(time.Duration)
-	async  asyncTracker
+	mu          sync.Mutex
+	sleep       func(time.Duration)
+	active      bool
+	activeScope K
 }
 
 // NewScheduler creates a scheduler with optional runtime options.
@@ -62,49 +61,30 @@ func NewScheduler[K comparable, P any, R any](opts SchedulerOptions) Runtime[K, 
 
 // Run executes one scoped automation session synchronously.
 //
-// Run returns ErrScopeBusy when the same scope is already active.
+// Run returns ErrScopeBusy when another session is already active.
 func (s *scheduler[K, P, R]) Run(scope K, cfg SessionConfig[K, P, R]) ([]R, error) {
 	if s == nil {
 		return nil, ErrScopeBusy
 	}
-	if !s.active.tryAcquire(scope) {
+
+	s.mu.Lock()
+	if s.active {
+		s.mu.Unlock()
 		return nil, ErrScopeBusy
 	}
-	defer s.active.release(scope)
-	return s.runSession(scope, cfg)
-}
+	s.active = true
+	s.activeScope = scope
+	s.mu.Unlock()
 
-// Trigger starts one scoped automation session asynchronously.
-//
-// Trigger returns false when the same scope is already active.
-func (s *scheduler[K, P, R]) Trigger(scope K, cfg SessionConfig[K, P, R], onDone func(results []R, err error)) bool {
-	if s == nil {
-		return false
-	}
-	if !s.active.tryAcquire(scope) {
-		return false
-	}
-
-	s.async.start()
-	go func() {
-		defer s.async.done()
-		defer s.active.release(scope)
-
-		results, err := s.runSession(scope, cfg)
-		if onDone != nil {
-			onDone(results, err)
-		}
+	defer func() {
+		s.mu.Lock()
+		s.active = false
+		var zero K
+		s.activeScope = zero
+		s.mu.Unlock()
 	}()
 
-	return true
-}
-
-// Wait blocks until all async sessions started via Trigger have finished.
-func (s *scheduler[K, P, R]) Wait() {
-	if s == nil {
-		return
-	}
-	s.async.wait()
+	return s.runSession(scope, cfg)
 }
 
 // IsActive reports whether the given scope is currently being processed.
@@ -112,7 +92,10 @@ func (s *scheduler[K, P, R]) IsActive(scope K) bool {
 	if s == nil {
 		return false
 	}
-	return s.active.isActive(scope)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.active && s.activeScope == scope
 }
 
 func (s *scheduler[K, P, R]) runSession(scope K, cfg SessionConfig[K, P, R]) ([]R, error) {

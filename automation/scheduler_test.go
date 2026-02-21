@@ -9,29 +9,34 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestScheduler_Run_ReturnsErrScopeBusyWhenScopeIsActive(t *testing.T) {
+func TestScheduler_Run_ReturnsErrScopeBusyWhenSessionIsActive(t *testing.T) {
 	scheduler := NewScheduler[int, int, int](SchedulerOptions{})
 
 	started := make(chan struct{})
 	unblock := make(chan struct{})
+	done := make(chan struct{})
+	runErr := make(chan error, 1)
 	startOnce := sync.Once{}
 
-	startedAsync := scheduler.Trigger(1, SessionConfig[int, int, int]{
-		MaxIterations: 1,
-		ForEachActor: func(scope int, visit func(actor int) bool) {
-			visit(1)
-		},
-		ProcessActor: func(scope int, actor int, emit func(result int)) (bool, bool, error) {
-			startOnce.Do(func() { close(started) })
-			<-unblock
-			return false, false, nil
-		},
-	}, nil)
-	require.True(t, startedAsync)
+	go func() {
+		_, err := scheduler.Run(1, SessionConfig[int, int, int]{
+			MaxIterations: 1,
+			ForEachActor: func(scope int, visit func(actor int) bool) {
+				visit(1)
+			},
+			ProcessActor: func(scope int, actor int, emit func(result int)) (bool, bool, error) {
+				startOnce.Do(func() { close(started) })
+				<-unblock
+				return false, false, nil
+			},
+		})
+		runErr <- err
+		close(done)
+	}()
 
 	<-started
 
-	_, err := scheduler.Run(1, SessionConfig[int, int, int]{
+	_, err := scheduler.Run(2, SessionConfig[int, int, int]{
 		MaxIterations: 1,
 		ForEachActor: func(scope int, visit func(actor int) bool) {
 			visit(1)
@@ -43,17 +48,14 @@ func TestScheduler_Run_ReturnsErrScopeBusyWhenScopeIsActive(t *testing.T) {
 	require.ErrorIs(t, err, ErrScopeBusy)
 
 	close(unblock)
-	scheduler.Wait()
+	<-done
+	require.NoError(t, <-runErr)
 }
 
-func TestScheduler_Trigger_EmitsResultsAndRunsDoneCallback(t *testing.T) {
+func TestScheduler_Run_ReportsResults(t *testing.T) {
 	scheduler := NewScheduler[string, int, int](SchedulerOptions{})
 
-	done := make(chan struct{})
-	var got []int
-	var gotErr error
-
-	ok := scheduler.Trigger("room", SessionConfig[string, int, int]{
+	got, gotErr := scheduler.Run("room", SessionConfig[string, int, int]{
 		MaxIterations: 2,
 		ForEachActor: func(scope string, visit func(actor int) bool) {
 			visit(1)
@@ -62,15 +64,7 @@ func TestScheduler_Trigger_EmitsResultsAndRunsDoneCallback(t *testing.T) {
 			emit(actor)
 			return true, true, nil
 		},
-	}, func(results []int, err error) {
-		got = results
-		gotErr = err
-		close(done)
 	})
-	require.True(t, ok)
-
-	<-done
-	scheduler.Wait()
 
 	require.NoError(t, gotErr)
 	assert.Equal(t, []int{1}, got)

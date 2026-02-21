@@ -11,8 +11,6 @@ var (
 	ErrNilHandler = errors.New("event handler is required")
 	// ErrNilRuntime means execution was attempted on a nil runtime.
 	ErrNilRuntime = errors.New("events runtime is nil")
-	// ErrNilDispatcher is kept as compatibility alias for ErrNilRuntime.
-	ErrNilDispatcher = ErrNilRuntime
 	// ErrUnknownCommand means a referenced command id is not registered.
 	ErrUnknownCommand = errors.New("unknown command")
 	// ErrUnknownEvent means a referenced event id is not registered.

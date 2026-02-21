@@ -6,7 +6,7 @@ import (
 	"github.com/RevoTale/turn-based-game-engine/runtime/events"
 )
 
-func ExampleExecute_battleshipFlow() {
+func ExampleExecuteCommand_battleshipFlow() {
 	type fireCommand struct {
 		Coordinate string
 		Hit        bool
@@ -57,8 +57,8 @@ func ExampleExecute_battleshipFlow() {
 	if err != nil {
 		return
 	}
-	_ = events.Execute(runtime, fire, fireCommand{Coordinate: "B4", Hit: true})
-	_ = events.Execute(runtime, fire, fireCommand{Coordinate: "A1", Hit: false})
+	_ = events.ExecuteCommand(runtime, fire, fireCommand{Coordinate: "B4", Hit: true})
+	_ = events.ExecuteCommand(runtime, fire, fireCommand{Coordinate: "A1", Hit: false})
 
 	// Output:
 	// fire B4
