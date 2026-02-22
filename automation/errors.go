@@ -11,6 +11,6 @@ var (
 	ErrNilProcessActor = errors.New("process actor callback is required")
 	// ErrMaxIterationsReached means loop budget was exhausted without stabilizing.
 	ErrMaxIterationsReached = errors.New("max iterations reached")
-	// ErrScopeBusy means another automation session is already being processed.
-	ErrScopeBusy = errors.New("automation session is already being processed")
+	// ErrScopeBusy means the requested scope is already being processed.
+	ErrScopeBusy = errors.New("automation scope is already being processed")
 )

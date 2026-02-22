@@ -3,18 +3,16 @@ package events
 import "errors"
 
 var (
-	// ErrNilBuilder means a nil builder was used.
-	ErrNilBuilder = errors.New("events builder is nil")
-	// ErrBuilderSealed means registration was attempted after Build.
-	ErrBuilderSealed = errors.New("events builder is sealed")
-	// ErrNilHandler means registration was called without a handler.
-	ErrNilHandler = errors.New("event handler is required")
-	// ErrNilRuntime means execution was attempted on a nil runtime.
+	// ErrNilRuntime means a nil runtime pointer was used.
 	ErrNilRuntime = errors.New("events runtime is nil")
-	// ErrUnknownCommand means a referenced command id is not registered.
-	ErrUnknownCommand = errors.New("unknown command")
-	// ErrUnknownEvent means a referenced event id is not registered.
-	ErrUnknownEvent = errors.New("unknown event")
-	// ErrPayloadTypeMismatch means runtime payload does not match event type.
-	ErrPayloadTypeMismatch = errors.New("event payload type mismatch")
+	// ErrNilPatchFactory means ExecuteCommand was called without a patch factory.
+	ErrNilPatchFactory = errors.New("events patch factory is nil")
+	// ErrNilPatch means patch factory returned nil.
+	ErrNilPatch = errors.New("events patch is nil")
+	// ErrNilCommand means command definition is empty.
+	ErrNilCommand = errors.New("events command is nil")
+	// ErrNilEvent means emitted event definition is empty.
+	ErrNilEvent = errors.New("events event is nil")
+	// ErrNilHandler means command/event handler is nil.
+	ErrNilHandler = errors.New("events handler is nil")
 )

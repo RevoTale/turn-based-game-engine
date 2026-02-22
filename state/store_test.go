@@ -16,8 +16,7 @@ func TestDoCommitIncrementsVersion(t *testing.T) {
 	}
 	store := state.New(payload{})
 
-	version, err := store.Do(func(tx *state.Tx[payload]) error {
-		current := tx.State()
+	version, err := store.Do(func(current *payload, _ uint64) error {
 		current.Count++
 		return nil
 	})
@@ -32,7 +31,7 @@ func TestDoCommitIncrementsVersion(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
-func TestDoRollbackHooksOnFailure(t *testing.T) {
+func TestDoFailureDoesNotIncrementVersion(t *testing.T) {
 	t.Parallel()
 
 	type payload struct {
@@ -41,12 +40,7 @@ func TestDoRollbackHooksOnFailure(t *testing.T) {
 	store := state.New(payload{})
 	expectedErr := errors.New("boom")
 
-	_, err := store.Do(func(tx *state.Tx[payload]) error {
-		current := tx.State()
-		previous := current.Count
-		require.NoError(t, tx.BeforeChange(func(s *payload) {
-			s.Count = previous
-		}))
+	_, err := store.Do(func(current *payload, _ uint64) error {
 		current.Count++
 		return expectedErr
 	})
@@ -61,16 +55,14 @@ func TestDoRollbackHooksOnFailure(t *testing.T) {
 		version = v
 	})
 	require.NoError(t, err)
-	require.Equal(t, 0, count)
+	require.Equal(t, 1, count)
 	require.Equal(t, uint64(0), version)
 }
 
-func TestBeforeChangeRejectsNilHook(t *testing.T) {
+func TestDoRejectsNilCallback(t *testing.T) {
 	t.Parallel()
 
 	store := state.New(struct{}{})
-	_, err := store.Do(func(tx *state.Tx[struct{}]) error {
-		return tx.BeforeChange(nil)
-	})
-	require.ErrorIs(t, err, state.ErrNilRollback)
+	_, err := store.Do(nil)
+	require.ErrorIs(t, err, state.ErrNilTransaction)
 }

@@ -10,11 +10,15 @@ Path: `engine/examples/tic_tac_toe/`
 
 - Feature: Locked state mutation
   Description: Full command tree runs under one state lock.
-  Example: `store.Do(func(tx *state.Tx[gameState]) error { ... })`
+  Example: `store.Do(func(s *gameState, v uint64) error { ... })`
 
 - Feature: Internal event chaining
-  Description: Move command emits follow-up events.
-  Example: `ctx.Emit(events.Next(moveApplied, payload))`
+  Description: Command/event views emit follow-up events without payload.
+  Example: `emit(resolveMoveEvent)`
+
+- Feature: Patch-return execution + single commit
+  Description: Runtime returns patch; root applies patch to store once.
+  Example: `patch, err := events.ExecuteCommand(runtime, state, playCmd, move, newPatch)`
 
 - Feature: Shared pure rules
   Description: Domain rules are reusable functions; handlers stay thin.

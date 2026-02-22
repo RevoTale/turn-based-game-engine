@@ -15,41 +15,42 @@ const (
 	testStateLayerKey uint8 = 2
 )
 
-func TestRegistry_SpaceAndLayerOperations(t *testing.T) {
+func TestRegistry_LayerOperations(t *testing.T) {
 	t.Parallel()
 
 	registry := NewRegistry[uint8, uint8, string]()
 	_, err := registry.CreateGrid(testBoardGridID, 3, 2)
 	require.NoError(t, err)
-	assert.Equal(t, 0, registry.LayerSpaceCount())
+	assert.Equal(t, 0, registry.LayerCount(testBoardGridID))
 
-	space, err := registry.Space(testBoardGridID)
+	layer, err := registry.Layer(testBoardGridID, testStateLayerKey)
 	require.NoError(t, err)
-	assert.Equal(t, 1, registry.LayerSpaceCount())
+	assert.Equal(t, 1, registry.LayerCount(testBoardGridID))
 
-	layer, err := space.Ensure(testStateLayerKey)
-	require.NoError(t, err)
 	require.NoError(t, layer.Set(grid2d.Position{X: 2, Y: 1}, "occupied"))
-
 	value, ok, err := layer.Get(grid2d.Position{X: 2, Y: 1})
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.Equal(t, "occupied", value)
+
+	sameLayer, err := registry.Layer(testBoardGridID, testStateLayerKey)
+	require.NoError(t, err)
+	assert.Same(t, layer, sameLayer)
 }
 
-func TestRegistry_SpaceIfExists_DoesNotCreateSpace(t *testing.T) {
+func TestRegistry_LayerIfExists_DoesNotCreateLayer(t *testing.T) {
 	t.Parallel()
 
 	registry := NewRegistry[uint8, uint8, bool]()
 	_, err := registry.CreateGrid(testBoardGridID, 3, 2)
 	require.NoError(t, err)
-	assert.Equal(t, 0, registry.LayerSpaceCount())
+	assert.Equal(t, 0, registry.LayerCount(testBoardGridID))
 
-	space, ok, err := registry.SpaceIfExists(testBoardGridID)
+	layer, ok, err := registry.LayerIfExists(testBoardGridID, testStateLayerKey)
 	require.NoError(t, err)
 	assert.False(t, ok)
-	assert.Nil(t, space)
-	assert.Equal(t, 0, registry.LayerSpaceCount())
+	assert.Nil(t, layer)
+	assert.Equal(t, 0, registry.LayerCount(testBoardGridID))
 }
 
 func TestRegistry_GridErrorsAndNilSafety(t *testing.T) {
@@ -59,42 +60,40 @@ func TestRegistry_GridErrorsAndNilSafety(t *testing.T) {
 	_, err := registry.CreateGrid(testBoardGridID, 2, 2)
 	require.NoError(t, err)
 
-	_, err = registry.Space(testMissingGridID)
+	_, err = registry.Layer(testMissingGridID, testStateLayerKey)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, grid2d.ErrGridNotFound)
 
-	_, ok, err := registry.SpaceIfExists(testMissingGridID)
+	_, ok, err := registry.LayerIfExists(testMissingGridID, testStateLayerKey)
 	require.NoError(t, err)
 	assert.False(t, ok)
 
 	var nilRegistry *Registry[uint8, uint8, bool]
-	_, err = nilRegistry.Space(testBoardGridID)
+	_, err = nilRegistry.Layer(testBoardGridID, testStateLayerKey)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, grid2d.ErrNilGridSet)
 
-	_, _, err = nilRegistry.SpaceIfExists(testBoardGridID)
+	_, _, err = nilRegistry.LayerIfExists(testBoardGridID, testStateLayerKey)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, grid2d.ErrNilGridSet)
 }
 
-func TestRegistry_DeleteGridRemovesGridAndSpace(t *testing.T) {
+func TestRegistry_DeleteGridRemovesGridAndLayers(t *testing.T) {
 	t.Parallel()
 
 	registry := NewRegistry[uint8, uint8, bool]()
 	_, err := registry.CreateGrid(testBoardGridID, 2, 2)
 	require.NoError(t, err)
 
-	space, err := registry.Space(testBoardGridID)
+	_, err = registry.Layer(testBoardGridID, testHitsLayerKey)
 	require.NoError(t, err)
-	_, err = space.Ensure(testHitsLayerKey)
-	require.NoError(t, err)
-	assert.Equal(t, 1, registry.LayerSpaceCount())
+	assert.Equal(t, 1, registry.LayerCount(testBoardGridID))
 
 	assert.True(t, registry.DeleteGrid(testBoardGridID))
-	assert.Equal(t, 0, registry.LayerSpaceCount())
+	assert.Equal(t, 0, registry.LayerCount(testBoardGridID))
 	assert.False(t, registry.DeleteGrid(testBoardGridID))
 
-	_, err = registry.Space(testBoardGridID)
+	_, err = registry.Layer(testBoardGridID, testHitsLayerKey)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, grid2d.ErrGridNotFound)
 }

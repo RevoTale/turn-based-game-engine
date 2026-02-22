@@ -7,19 +7,21 @@ Scope: trigger rights for `runtime/events`.
 ```text
 external/api or automation callback
   -> root command (`events.ExecuteCommand`)
-    -> command handler
-      -> emitted events (`ctx.Emit(events.Next(...))`)
+    -> command handler (consumes input)
+      -> emitted events (`emit(event)`)
+        -> event handlers (no payload)
+          -> patch output
 ```
 
 ## Feature Matrix
 
 - Feature: External trigger
   Description: External code starts one root command tree.
-  Example: `events.ExecuteCommand(runtime, command, payload)`
+  Example: `patch, err := events.ExecuteCommand(runtime, state, command, input, newPatch)`
 
 - Feature: Internal trigger
   Description: Command/event handlers emit only internal events.
-  Example: `ctx.Emit(events.Next(eventToken, payload))`
+  Example: `emit(resolveEvent)`
 
 - Feature: Execution mode
   Description: One command tree executes at a time per runtime.

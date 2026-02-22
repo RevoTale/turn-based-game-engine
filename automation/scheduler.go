@@ -32,8 +32,8 @@ type SchedulerOptions struct {
 	Sleep func(time.Duration)
 }
 
-// Runtime serializes automation execution and exposes one synchronous session
-// runner.
+// Runtime serializes automation execution per scope and exposes one
+// synchronous session runner.
 type Runtime[K comparable, P any, R any] interface {
 	// Run executes one scoped automation session synchronously.
 	Run(scope K, cfg SessionConfig[K, P, R]) ([]R, error)
@@ -42,10 +42,9 @@ type Runtime[K comparable, P any, R any] interface {
 }
 
 type scheduler[K comparable, P any, R any] struct {
-	mu          sync.Mutex
-	sleep       func(time.Duration)
-	active      bool
-	activeScope K
+	mu     sync.Mutex
+	sleep  func(time.Duration)
+	active map[K]struct{}
 }
 
 // NewScheduler creates a scheduler with optional runtime options.
@@ -55,32 +54,30 @@ func NewScheduler[K comparable, P any, R any](opts SchedulerOptions) Runtime[K, 
 		sleep = time.Sleep
 	}
 	return &scheduler[K, P, R]{
-		sleep: sleep,
+		sleep:  sleep,
+		active: make(map[K]struct{}),
 	}
 }
 
 // Run executes one scoped automation session synchronously.
 //
-// Run returns ErrScopeBusy when another session is already active.
+// Run returns ErrScopeBusy when the same scope is already active.
 func (s *scheduler[K, P, R]) Run(scope K, cfg SessionConfig[K, P, R]) ([]R, error) {
 	if s == nil {
 		return nil, ErrScopeBusy
 	}
 
 	s.mu.Lock()
-	if s.active {
+	if _, busy := s.active[scope]; busy {
 		s.mu.Unlock()
 		return nil, ErrScopeBusy
 	}
-	s.active = true
-	s.activeScope = scope
+	s.active[scope] = struct{}{}
 	s.mu.Unlock()
 
 	defer func() {
 		s.mu.Lock()
-		s.active = false
-		var zero K
-		s.activeScope = zero
+		delete(s.active, scope)
 		s.mu.Unlock()
 	}()
 
@@ -95,7 +92,8 @@ func (s *scheduler[K, P, R]) IsActive(scope K) bool {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.active && s.activeScope == scope
+	_, ok := s.active[scope]
+	return ok
 }
 
 func (s *scheduler[K, P, R]) runSession(scope K, cfg SessionConfig[K, P, R]) ([]R, error) {

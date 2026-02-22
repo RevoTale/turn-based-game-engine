@@ -51,14 +51,10 @@ func TestRegistry_UsesGridSpecificBounds(t *testing.T) {
 	_, err = registry.CreateGrid(gridBID, 5, 3)
 	require.NoError(t, err)
 
-	spaceA, err := registry.Space(gridAID)
-	require.NoError(t, err)
-	layerA, err := spaceA.Create(stateKey)
+	layerA, err := registry.Layer(gridAID, stateKey)
 	require.NoError(t, err)
 
-	spaceB, err := registry.Space(gridBID)
-	require.NoError(t, err)
-	layerB, err := spaceB.Create(stateKey)
+	layerB, err := registry.Layer(gridBID, stateKey)
 	require.NoError(t, err)
 
 	err = layerA.Set(grid2d.Position{X: 1, Y: 1}, "A")
@@ -72,7 +68,7 @@ func TestRegistry_UsesGridSpecificBounds(t *testing.T) {
 	assert.ErrorIs(t, err, grid2d.ErrOutOfBounds)
 }
 
-func TestRegistry_SpaceIfExists_DoesNotCreate(t *testing.T) {
+func TestRegistry_LayerIfExists_DoesNotCreate(t *testing.T) {
 	t.Parallel()
 
 	const (
@@ -83,27 +79,27 @@ func TestRegistry_SpaceIfExists_DoesNotCreate(t *testing.T) {
 	registry := NewRegistry[uint8, uint8, string]()
 	_, err := registry.CreateGrid(gridAID, 3, 2)
 	require.NoError(t, err)
-	assert.Equal(t, 0, registry.LayerSpaceCount())
+	assert.Equal(t, 0, registry.LayerCount(gridAID))
 
-	space, ok, err := registry.SpaceIfExists(gridAID)
+	layer, ok, err := registry.LayerIfExists(gridAID, 1)
 	require.NoError(t, err)
 	assert.False(t, ok)
-	assert.Nil(t, space)
-	assert.Equal(t, 0, registry.LayerSpaceCount())
+	assert.Nil(t, layer)
+	assert.Equal(t, 0, registry.LayerCount(gridAID))
 
-	created, err := registry.Space(gridAID)
+	created, err := registry.Layer(gridAID, 1)
 	require.NoError(t, err)
-	assert.Equal(t, 1, registry.LayerSpaceCount())
+	assert.Equal(t, 1, registry.LayerCount(gridAID))
 
-	space, ok, err = registry.SpaceIfExists(gridAID)
+	layer, ok, err = registry.LayerIfExists(gridAID, 1)
 	require.NoError(t, err)
 	require.True(t, ok)
-	assert.Same(t, created, space)
+	assert.Same(t, created, layer)
 
-	space, ok, err = registry.SpaceIfExists(missingGridID)
+	layer, ok, err = registry.LayerIfExists(missingGridID, 1)
 	require.NoError(t, err)
 	assert.False(t, ok)
-	assert.Nil(t, space)
+	assert.Nil(t, layer)
 }
 
 func TestTurnbasedIntegration_Registry(t *testing.T) {
@@ -131,13 +127,9 @@ func TestTurnbasedIntegration_Registry(t *testing.T) {
 	_, err = registry.CreateGrid(gridBeta, 8, 4)
 	require.NoError(t, err)
 
-	alphaSpace, err := registry.Space(gridAlpha)
+	alphaLayer, err := registry.Layer(gridAlpha, layerMain)
 	require.NoError(t, err)
-	alphaLayer, err := alphaSpace.Ensure(layerMain)
-	require.NoError(t, err)
-	betaSpace, err := registry.Space(gridBeta)
-	require.NoError(t, err)
-	betaLayer, err := betaSpace.Ensure(layerMain)
+	betaLayer, err := registry.Layer(gridBeta, layerMain)
 	require.NoError(t, err)
 
 	layers := map[gridID]*grid2d.SparseLayer[string]{

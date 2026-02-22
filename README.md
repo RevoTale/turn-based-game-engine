@@ -28,9 +28,9 @@ Notes:
   Description: Reuse pure rule functions across commands/events.
   Example: `actor, outcome, err := rules.ApplyMove(patch, move)`
 
-- Feature: Local event payloads
-  Description: Keep payloads command-local; avoid one global shared payload type.
-  Example: `events.Command[playCommand]`, `events.Event[moveApplied]`
+- Feature: Typed context-driven handlers
+  Description: Handlers use `Context[S,P]` for state read, patch mutation, and event emission.
+  Example: `func(ctx events.Context[ReadState, Patch], in Shoot) error`
 
 ## Public API
 
@@ -42,7 +42,7 @@ Notes:
 
 - Feature: `(*Store).Do(run)`
   Description: Run one state mutation under lock.
-  Example: `_, err := store.Do(func(tx *state.Tx[GameState]) error { return nil })`
+  Example: `_, err := store.Do(func(s *GameState, v uint64) error { return nil })`
 
 - Feature: `(*Store).View(read)`
   Description: Read state consistently under lock.
@@ -54,29 +54,21 @@ Notes:
 
 ### `runtime/events`
 
-- Feature: `events.NewBuilder()`
-  Description: Start runtime command/event registration.
-  Example: `builder := events.NewBuilder()`
+- Feature: `events.DefineCommand(...)`
+  Description: Define one root command actor.
+  Example: `play, err := events.DefineCommand(handlePlay)`
 
-- Feature: `events.RegisterCommand(...)`
-  Description: Register one root command handler.
-  Example: `play, err := events.RegisterCommand(builder, handlePlay, events.Hooks[Move]{})`
-
-- Feature: `events.RegisterEvent(...)`
-  Description: Register one internal event handler.
-  Example: `moved, err := events.RegisterEvent(builder, handleMoved, events.Hooks[Moved]{})`
-
-- Feature: `(*Builder).Build()`
-  Description: Build immutable runtime.
-  Example: `runtime, err := builder.Build()`
+- Feature: `events.DefineEvent(...)`
+  Description: Define one internal event actor.
+  Example: `resolve, err := events.DefineEvent(handleResolve)`
 
 - Feature: `events.ExecuteCommand(...)`
-  Description: Execute one root command tree.
-  Example: `err := events.ExecuteCommand(runtime, play, Move{Index: 4})`
+  Description: Execute one root command tree and return patch.
+  Example: `patch, err := events.ExecuteCommand(runtime, state, play, Move{Index: 4}, newPatch)`
 
-- Feature: `ctx.Emit(events.Next(...))`
-  Description: Emit follow-up internal event from command/event handler.
-  Example: `ctx.Emit(events.Next(moved, Moved{Index: 4}))`
+- Feature: `(events.Context).Emit(...)`
+  Description: Queue follow-up internal event from command/event handler.
+  Example: `ctx.Emit(resolveShotEvent)`
 
 ### `turnbased`
 

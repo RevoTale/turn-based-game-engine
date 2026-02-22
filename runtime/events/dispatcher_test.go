@@ -10,217 +10,209 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuilderRegisterAndSeal(t *testing.T) {
+func TestDefineRejectsNilHandler(t *testing.T) {
 	t.Parallel()
 
-	builder := events.NewBuilder()
+	_, err := events.DefineEvent[int, int](nil)
+	require.ErrorIs(t, err, events.ErrNilHandler)
 
-	first, err := events.RegisterEvent(builder, func(_ *events.Context, _ int) error {
-		return nil
-	}, events.Hooks[int]{})
-	require.NoError(t, err)
-
-	second, err := events.RegisterCommand(builder, func(_ *events.Context, _ int) error {
-		return nil
-	}, events.Hooks[int]{})
-	require.NoError(t, err)
-	require.NotEqual(t, first, events.Event[int]{})
-	require.NotEqual(t, second, events.Command[int]{})
-
-	runtime, err := builder.Build()
-	require.NoError(t, err)
-	require.NotNil(t, runtime)
-
-	_, err = events.RegisterEvent(builder, func(_ *events.Context, _ int) error {
-		return nil
-	}, events.Hooks[int]{})
-	require.ErrorIs(t, err, events.ErrBuilderSealed)
+	_, err = events.DefineCommand[int, int, int](nil)
+	require.ErrorIs(t, err, events.ErrNilHandler)
 }
 
-func TestDispatcherDispatchDrainsEmittedEventTree(t *testing.T) {
+func TestExecuteCommandDrainsEmittedEventTree(t *testing.T) {
 	t.Parallel()
 
-	type fireCommand struct {
+	type state struct{}
+	type patch struct {
+		coord string
+		hit   bool
+		trace []string
+	}
+	type input struct {
 		Coordinate string
 		Hit        bool
 	}
-	type hitEvent struct {
-		Coordinate string
-	}
-	type missEvent struct {
-		Coordinate string
-	}
 
-	builder := events.NewBuilder()
-	trace := make([]string, 0, 2)
+	var hitEv events.Event[*state, patch]
+	var missEv events.Event[*state, patch]
 
-	hit, err := events.RegisterEvent(builder, func(_ *events.Context, payload hitEvent) error {
-		trace = append(trace, "hit:"+payload.Coordinate)
-		return nil
-	}, events.Hooks[hitEvent]{})
-	require.NoError(t, err)
-
-	miss, err := events.RegisterEvent(builder, func(_ *events.Context, payload missEvent) error {
-		trace = append(trace, "miss:"+payload.Coordinate)
-		return nil
-	}, events.Hooks[missEvent]{})
-	require.NoError(t, err)
-
-	fire, err := events.RegisterCommand(builder, func(_ *events.Context, payload fireCommand) error {
-		trace = append(trace, "fire:"+payload.Coordinate)
-		return nil
-	}, events.Hooks[fireCommand]{
-		After: func(ctx *events.Context, payload fireCommand) error {
-			if payload.Hit {
-				ctx.Emit(events.Next(hit, hitEvent{Coordinate: payload.Coordinate}))
-				return nil
-			}
-			ctx.Emit(events.Next(miss, missEvent{Coordinate: payload.Coordinate}))
+	resolveEv, err := events.DefineEvent[*state, patch](func(ctx events.Context[*state, patch]) error {
+		p := ctx.Patch()
+		if p.hit {
+			ctx.Emit(hitEv)
 			return nil
-		},
+		}
+		ctx.Emit(missEv)
+		return nil
 	})
 	require.NoError(t, err)
 
-	runtime, err := builder.Build()
-	require.NoError(t, err)
-
-	err = events.ExecuteCommand(runtime, fire, fireCommand{Coordinate: "B4", Hit: true})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"fire:B4", "hit:B4"}, trace)
-
-	trace = trace[:0]
-	err = events.ExecuteCommand(runtime, fire, fireCommand{Coordinate: "A1", Hit: false})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"fire:A1", "miss:A1"}, trace)
-}
-
-func TestDispatcherOnFailRunsWhenHookFails(t *testing.T) {
-	t.Parallel()
-
-	expectedErr := errors.New("before failed")
-	builder := events.NewBuilder()
-
-	onFailCalled := false
-	command, err := events.RegisterCommand(builder, func(_ *events.Context, _ int) error {
-		t.Fatal("handler must not execute when before hook fails")
+	hitEv, err = events.DefineEvent[*state, patch](func(ctx events.Context[*state, patch]) error {
+		p := ctx.Patch()
+		p.trace = append(p.trace, "hit:"+p.coord)
 		return nil
-	}, events.Hooks[int]{
-		Before: func(_ *events.Context, _ int) error {
-			return expectedErr
-		},
-		OnFail: func(_ *events.Context, _ int, cause error) {
-			onFailCalled = true
-			assert.ErrorIs(t, cause, expectedErr)
-		},
 	})
 	require.NoError(t, err)
 
-	runtime, err := builder.Build()
-	require.NoError(t, err)
-
-	err = events.ExecuteCommand(runtime, command, 10)
-	require.Error(t, err)
-	assert.ErrorIs(t, err, expectedErr)
-	assert.True(t, onFailCalled)
-}
-
-func TestRuntimeRejectsUnknownRootCommand(t *testing.T) {
-	t.Parallel()
-
-	builder := events.NewBuilder()
-	runtime, err := builder.Build()
-	require.NoError(t, err)
-
-	var unknown events.Command[int]
-	err = events.ExecuteCommand(runtime, unknown, 7)
-	require.ErrorIs(t, err, events.ErrUnknownCommand)
-}
-
-func TestRuntimeRejectsUnknownReturnedEvent(t *testing.T) {
-	t.Parallel()
-
-	builder := events.NewBuilder()
-
-	root, err := events.RegisterCommand(builder, func(ctx *events.Context, _ int) error {
-		var unknown events.Event[int]
-		ctx.Emit(events.Next(unknown, 1))
+	missEv, err = events.DefineEvent[*state, patch](func(ctx events.Context[*state, patch]) error {
+		p := ctx.Patch()
+		p.trace = append(p.trace, "miss:"+p.coord)
 		return nil
-	}, events.Hooks[int]{})
+	})
 	require.NoError(t, err)
 
-	runtime, err := builder.Build()
+	fireCmd, err := events.DefineCommand[*state, patch, input](func(ctx events.Context[*state, patch], in input) error {
+		p := ctx.Patch()
+		p.coord = in.Coordinate
+		p.hit = in.Hit
+		p.trace = append(p.trace, "fire:"+in.Coordinate)
+		ctx.Emit(resolveEv)
+		return nil
+	})
 	require.NoError(t, err)
 
-	err = events.ExecuteCommand(runtime, root, 0)
-	require.ErrorIs(t, err, events.ErrUnknownEvent)
+	runtime := events.NewRuntime()
+	s := &state{}
+
+	firstPatch, err := events.ExecuteCommand(runtime, s, fireCmd, input{Coordinate: "B4", Hit: true}, func() *patch {
+		return &patch{trace: make([]string, 0, 4)}
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"fire:B4", "hit:B4"}, firstPatch.trace)
+
+	secondPatch, err := events.ExecuteCommand(runtime, s, fireCmd, input{Coordinate: "A1", Hit: false}, func() *patch {
+		return &patch{trace: make([]string, 0, 4)}
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"fire:A1", "miss:A1"}, secondPatch.trace)
 }
 
-func TestExecuteCommandRunsCommand(t *testing.T) {
+func TestRuntimeRejectsNilInputs(t *testing.T) {
 	t.Parallel()
 
-	builder := events.NewBuilder()
-	ran := false
+	type patch struct{}
+	cmd, err := events.DefineCommand[int, patch, int](func(_ events.Context[int, patch], _ int) error { return nil })
+	require.NoError(t, err)
 
-	command, err := events.RegisterCommand(builder, func(_ *events.Context, payload int) error {
-		ran = payload == 42
+	_, err = events.ExecuteCommand[int, patch, int](nil, 1, cmd, 1, func() *patch { return &patch{} })
+	require.ErrorIs(t, err, events.ErrNilRuntime)
+
+	runtime := events.NewRuntime()
+	_, err = events.ExecuteCommand(runtime, 1, cmd, 1, nil)
+	require.ErrorIs(t, err, events.ErrNilPatchFactory)
+
+	_, err = events.ExecuteCommand(runtime, 1, cmd, 1, func() *patch { return nil })
+	require.ErrorIs(t, err, events.ErrNilPatch)
+
+	var nilCmd events.Command[int, patch, int]
+	_, err = events.ExecuteCommand(runtime, 1, nilCmd, 1, func() *patch { return &patch{} })
+	require.ErrorIs(t, err, events.ErrNilCommand)
+}
+
+func TestRuntimeRejectsNilEmittedEvent(t *testing.T) {
+	t.Parallel()
+
+	type patch struct{}
+	cmd, err := events.DefineCommand[int, patch, int](func(ctx events.Context[int, patch], _ int) error {
+		var unknown events.Event[int, patch]
+		ctx.Emit(unknown)
 		return nil
-	}, events.Hooks[int]{})
+	})
 	require.NoError(t, err)
 
-	runtime, err := builder.Build()
+	runtime := events.NewRuntime()
+	_, err = events.ExecuteCommand(runtime, 1, cmd, 0, func() *patch { return &patch{} })
+	require.ErrorIs(t, err, events.ErrNilEvent)
+}
+
+func TestRuntimeReturnsEventAndCommandErrors(t *testing.T) {
+	t.Parallel()
+
+	type patch struct{}
+	expectedCmdErr := errors.New("cmd failed")
+	expectedEvErr := errors.New("event failed")
+
+	cmdErrCmd, err := events.DefineCommand[int, patch, int](func(_ events.Context[int, patch], _ int) error {
+		return expectedCmdErr
+	})
 	require.NoError(t, err)
 
-	require.NoError(t, events.ExecuteCommand(runtime, command, 42))
-	require.True(t, ran)
+	runtime := events.NewRuntime()
+	_, err = events.ExecuteCommand(runtime, 1, cmdErrCmd, 1, func() *patch { return &patch{} })
+	require.ErrorIs(t, err, expectedCmdErr)
+
+	failEv, err := events.DefineEvent[int, patch](func(_ events.Context[int, patch]) error {
+		return expectedEvErr
+	})
+	require.NoError(t, err)
+
+	cmdEmitFail, err := events.DefineCommand[int, patch, int](func(ctx events.Context[int, patch], _ int) error {
+		ctx.Emit(failEv)
+		return nil
+	})
+	require.NoError(t, err)
+
+	_, err = events.ExecuteCommand(runtime, 1, cmdEmitFail, 1, func() *patch { return &patch{} })
+	require.ErrorIs(t, err, expectedEvErr)
 }
 
 func TestRuntimeSerializesConcurrentCommandTrees(t *testing.T) {
 	t.Parallel()
 
-	builder := events.NewBuilder()
-	firstStarted := make(chan struct{})
-	releaseFirst := make(chan struct{})
-	secondEntered := make(chan struct{})
+	type state struct {
+		firstStarted chan struct{}
+		releaseFirst chan struct{}
+		secondEnter  chan struct{}
+	}
+	type patch struct{}
 
-	command, err := events.RegisterCommand(builder, func(_ *events.Context, payload int) error {
-		if payload == 1 {
-			close(firstStarted)
-			<-releaseFirst
+	s := &state{
+		firstStarted: make(chan struct{}),
+		releaseFirst: make(chan struct{}),
+		secondEnter:  make(chan struct{}),
+	}
+
+	cmd, err := events.DefineCommand[*state, patch, int](func(ctx events.Context[*state, patch], input int) error {
+		st := ctx.State()
+		if input == 1 {
+			close(st.firstStarted)
+			<-st.releaseFirst
 			return nil
 		}
-		if payload == 2 {
-			close(secondEntered)
+		if input == 2 {
+			close(st.secondEnter)
 		}
 		return nil
-	}, events.Hooks[int]{})
+	})
 	require.NoError(t, err)
 
-	runtime, err := builder.Build()
-	require.NoError(t, err)
+	runtime := events.NewRuntime()
 
 	errCh := make(chan error, 2)
 	go func() {
-		errCh <- events.ExecuteCommand(runtime, command, 1)
+		_, err := events.ExecuteCommand(runtime, s, cmd, 1, func() *patch { return &patch{} })
+		errCh <- err
 	}()
-	<-firstStarted
+	<-s.firstStarted
 
 	go func() {
-		errCh <- events.ExecuteCommand(runtime, command, 2)
+		_, err := events.ExecuteCommand(runtime, s, cmd, 2, func() *patch { return &patch{} })
+		errCh <- err
 	}()
 
 	select {
-	case <-secondEntered:
+	case <-s.secondEnter:
 		t.Fatal("second command entered before first completed")
 	case <-time.After(20 * time.Millisecond):
 	}
 
-	close(releaseFirst)
-
+	close(s.releaseFirst)
 	require.NoError(t, <-errCh)
 	require.NoError(t, <-errCh)
 
 	select {
-	case <-secondEntered:
+	case <-s.secondEnter:
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("second command did not execute after first completion")
 	}

@@ -1,16 +1,13 @@
-// Package events provides deterministic in-memory command/event dispatch.
+// Package events provides deterministic in-memory command/event orchestration.
 //
-// This package is independent from automation and can be used standalone.
+// One execution starts with a root command through ExecuteCommand.
+// Command handlers consume input and may emit internal events. Events do not
+// receive payload.
 //
-// One execution starts with a root Command through ExecuteCommand.
-// Command and Event handlers can emit internal follow-up events through
-// Context.Emit.
+// Command/event handlers work through Context[S,P], which carries typed state
+// and mutable patch plus event emitter.
 //
-// Commands/events are registered once at boot time and receive internal
-// incrementing ids. The built runtime is immutable.
-//
-// Dispatch uses a two-phase model: handlers and hooks enqueue emissions, and
-// the runtime appends those emissions only after the current event stage
-// finishes. Runtime execution is serialized: one command tree runs at a time
-// per runtime instance.
+// Runtime execution is serialized: one command tree runs at a time per runtime
+// instance. ExecuteCommand returns patch to caller; store commit stays outside
+// this package.
 package events

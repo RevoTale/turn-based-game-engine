@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestScheduler_Run_ReturnsErrScopeBusyWhenSessionIsActive(t *testing.T) {
+func TestScheduler_Run_ReturnsErrScopeBusyWhenSameScopeIsActive(t *testing.T) {
 	scheduler := NewScheduler[int, int, int](SchedulerOptions{})
 
 	started := make(chan struct{})
@@ -36,7 +36,7 @@ func TestScheduler_Run_ReturnsErrScopeBusyWhenSessionIsActive(t *testing.T) {
 
 	<-started
 
-	_, err := scheduler.Run(2, SessionConfig[int, int, int]{
+	_, err := scheduler.Run(1, SessionConfig[int, int, int]{
 		MaxIterations: 1,
 		ForEachActor: func(scope int, visit func(actor int) bool) {
 			visit(1)
@@ -50,6 +50,57 @@ func TestScheduler_Run_ReturnsErrScopeBusyWhenSessionIsActive(t *testing.T) {
 	close(unblock)
 	<-done
 	require.NoError(t, <-runErr)
+}
+
+func TestScheduler_Run_AllowsDifferentScopesConcurrently(t *testing.T) {
+	scheduler := NewScheduler[int, int, int](SchedulerOptions{})
+
+	started := make(chan struct{})
+	unblock := make(chan struct{})
+	firstErr := make(chan error, 1)
+
+	go func() {
+		_, err := scheduler.Run(1, SessionConfig[int, int, int]{
+			MaxIterations: 1,
+			ForEachActor: func(scope int, visit func(actor int) bool) {
+				visit(1)
+			},
+			ProcessActor: func(scope int, actor int, emit func(result int)) (bool, bool, error) {
+				close(started)
+				<-unblock
+				return false, false, nil
+			},
+		})
+		firstErr <- err
+	}()
+
+	<-started
+
+	secondDone := make(chan struct{})
+	secondErr := make(chan error, 1)
+	go func() {
+		_, err := scheduler.Run(2, SessionConfig[int, int, int]{
+			MaxIterations: 1,
+			ForEachActor: func(scope int, visit func(actor int) bool) {
+				visit(1)
+			},
+			ProcessActor: func(scope int, actor int, emit func(result int)) (bool, bool, error) {
+				return false, false, nil
+			},
+		})
+		secondErr <- err
+		close(secondDone)
+	}()
+
+	select {
+	case <-secondDone:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatal("different scope run should not block")
+	}
+	require.NoError(t, <-secondErr)
+
+	close(unblock)
+	require.NoError(t, <-firstErr)
 }
 
 func TestScheduler_Run_ReportsResults(t *testing.T) {

@@ -46,20 +46,14 @@ func NewGame() (*Game, error) {
 			turns: turns,
 			log:   make([]string, 0, 16),
 		}),
+		runtime: events.NewRuntime(),
 	}
 
-	builder := events.NewBuilder()
-	registeredEvents, err := g.registerEvents(builder)
+	registeredEvents, err := g.registerEvents()
 	if err != nil {
 		return nil, err
 	}
 	g.ev = registeredEvents
-
-	runtime, err := builder.Build()
-	if err != nil {
-		return nil, err
-	}
-	g.runtime = runtime
 
 	return g, nil
 }
@@ -70,11 +64,16 @@ func (g *Game) Play(index int) error {
 		return ErrNilGame
 	}
 
-	_, err := g.store.Do(func(tx *state.Tx[gameState]) error {
-		return events.ExecuteCommand(g.runtime, g.ev.play, playCommand{
-			State: tx.State(),
-			Move:  Move{Index: index},
+	_, err := g.store.Do(func(st *gameState, _ uint64) error {
+		patch, executeErr := events.ExecuteCommand(g.runtime, st, g.ev.play, Move{Index: index}, func() *gamePatch {
+			return &gamePatch{
+				log: make([]string, 0, 4),
+			}
 		})
+		if executeErr != nil {
+			return executeErr
+		}
+		return applyPatch(st, patch)
 	})
 	return err
 }

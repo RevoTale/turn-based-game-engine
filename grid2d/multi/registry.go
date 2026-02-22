@@ -6,17 +6,17 @@ import (
 	"github.com/RevoTale/turn-based-game-engine/grid2d"
 )
 
-// Registry stores many grids and per-grid typed layer spaces.
+// Registry stores many grids and per-grid named sparse layers.
 type Registry[G IntegerKey, K IntegerKey, T comparable] struct {
 	grids  map[G]*grid2d.Grid
-	spaces map[G]*LayerSpace[K, T]
+	layers map[G]map[K]*grid2d.SparseLayer[T]
 }
 
 // NewRegistry creates an empty registry.
 func NewRegistry[G IntegerKey, K IntegerKey, T comparable]() *Registry[G, K, T] {
 	return &Registry[G, K, T]{
 		grids:  make(map[G]*grid2d.Grid),
-		spaces: make(map[G]*LayerSpace[K, T]),
+		layers: make(map[G]map[K]*grid2d.SparseLayer[T]),
 	}
 }
 
@@ -69,14 +69,14 @@ func (r *Registry[G, K, T]) GetGrid(id G) (*grid2d.Grid, bool) {
 	return grid, ok
 }
 
-// DeleteGrid removes layer space and then removes the grid.
+// DeleteGrid removes all layers and then removes the grid.
 //
 // Returns true when the grid was removed.
 func (r *Registry[G, K, T]) DeleteGrid(id G) bool {
 	if r == nil {
 		return false
 	}
-	delete(r.spaces, id)
+	delete(r.layers, id)
 	if _, ok := r.grids[id]; !ok {
 		return false
 	}
@@ -106,55 +106,81 @@ func (r *Registry[G, K, T]) ForEachGrid(visit func(id G, grid *grid2d.Grid) bool
 	}
 }
 
-// Space returns layer space for gridID.
-//
-// If the layer space does not exist yet, Space creates it.
-func (r *Registry[G, K, T]) Space(gridID G) (*LayerSpace[K, T], error) {
+// Layer returns named layer for gridID and creates it when missing.
+func (r *Registry[G, K, T]) Layer(gridID G, layerKey K) (*grid2d.SparseLayer[T], error) {
 	if r == nil {
 		return nil, grid2d.ErrNilGridSet
-	}
-	if space, ok := r.spaces[gridID]; ok {
-		return space, nil
 	}
 	grid, ok := r.grids[gridID]
 	if !ok {
 		return nil, fmt.Errorf("%w: %v", grid2d.ErrGridNotFound, gridID)
 	}
-	space, err := NewLayerSpace[K, T](grid)
+	layers := r.layers[gridID]
+	if layers == nil {
+		layers = make(map[K]*grid2d.SparseLayer[T])
+		r.layers[gridID] = layers
+	}
+	if layer, exists := layers[layerKey]; exists {
+		return layer, nil
+	}
+	layer, err := grid2d.NewSparseLayer[T](grid)
 	if err != nil {
 		return nil, err
 	}
-	r.spaces[gridID] = space
-	return space, nil
+	layers[layerKey] = layer
+	return layer, nil
 }
 
-// SpaceIfExists returns layer space only if it already exists.
+// LayerIfExists returns named layer only if already created.
 //
-// It never creates a new layer space.
-// Missing grid ids return (nil, false, nil).
-func (r *Registry[G, K, T]) SpaceIfExists(gridID G) (*LayerSpace[K, T], bool, error) {
+// It never creates a layer.
+// Missing grid or missing layer returns (nil, false, nil).
+func (r *Registry[G, K, T]) LayerIfExists(gridID G, layerKey K) (*grid2d.SparseLayer[T], bool, error) {
 	if r == nil {
 		return nil, false, grid2d.ErrNilGridSet
 	}
 	if _, ok := r.grids[gridID]; !ok {
 		return nil, false, nil
 	}
-	space, ok := r.spaces[gridID]
-	return space, ok, nil
-}
-
-// ForgetGrid removes layer data for gridID but keeps the grid itself.
-func (r *Registry[G, K, T]) ForgetGrid(gridID G) {
-	if r == nil {
-		return
+	layers := r.layers[gridID]
+	if layers == nil {
+		return nil, false, nil
 	}
-	delete(r.spaces, gridID)
+	layer, ok := layers[layerKey]
+	return layer, ok, nil
 }
 
-// LayerSpaceCount returns how many layer spaces currently exist.
-func (r *Registry[G, K, T]) LayerSpaceCount() int {
+// DeleteLayer removes one named layer from a grid.
+func (r *Registry[G, K, T]) DeleteLayer(gridID G, layerKey K) bool {
+	if r == nil {
+		return false
+	}
+	layers := r.layers[gridID]
+	if layers == nil {
+		return false
+	}
+	if _, ok := layers[layerKey]; !ok {
+		return false
+	}
+	delete(layers, layerKey)
+	if len(layers) == 0 {
+		delete(r.layers, gridID)
+	}
+	return true
+}
+
+// LayerCount returns how many layers currently exist for gridID.
+func (r *Registry[G, K, T]) LayerCount(gridID G) int {
 	if r == nil {
 		return 0
 	}
-	return len(r.spaces)
+	return len(r.layers[gridID])
+}
+
+// ForgetGridLayers removes all layers for one grid but keeps the grid itself.
+func (r *Registry[G, K, T]) ForgetGridLayers(gridID G) {
+	if r == nil {
+		return
+	}
+	delete(r.layers, gridID)
 }

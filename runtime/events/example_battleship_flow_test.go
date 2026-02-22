@@ -7,58 +7,67 @@ import (
 )
 
 func ExampleExecuteCommand_battleshipFlow() {
-	type fireCommand struct {
+	type state struct{}
+	type patch struct {
+		coord string
+		hit   bool
+		trace []string
+	}
+	type input struct {
 		Coordinate string
 		Hit        bool
 	}
-	type hitEvent struct {
-		Coordinate string
-	}
-	type missEvent struct {
-		Coordinate string
-	}
 
-	builder := events.NewBuilder()
+	var hitEv events.Event[*state, patch]
+	var missEv events.Event[*state, patch]
 
-	hit, err := events.RegisterEvent(builder, func(_ *events.Context, payload hitEvent) error {
-		fmt.Printf("hit %s\n", payload.Coordinate)
-		return nil
-	}, events.Hooks[hitEvent]{})
-	if err != nil {
-		return
-	}
-
-	miss, err := events.RegisterEvent(builder, func(_ *events.Context, payload missEvent) error {
-		fmt.Printf("miss %s\n", payload.Coordinate)
-		return nil
-	}, events.Hooks[missEvent]{})
-	if err != nil {
-		return
-	}
-
-	fire, err := events.RegisterCommand(builder, func(_ *events.Context, payload fireCommand) error {
-		fmt.Printf("fire %s\n", payload.Coordinate)
-		return nil
-	}, events.Hooks[fireCommand]{
-		After: func(ctx *events.Context, payload fireCommand) error {
-			if payload.Hit {
-				ctx.Emit(events.Next(hit, hitEvent{Coordinate: payload.Coordinate}))
-				return nil
-			}
-			ctx.Emit(events.Next(miss, missEvent{Coordinate: payload.Coordinate}))
+	resolveEv, _ := events.DefineEvent[*state, patch](func(ctx events.Context[*state, patch]) error {
+		p := ctx.Patch()
+		if p.hit {
+			ctx.Emit(hitEv)
 			return nil
-		},
+		}
+		ctx.Emit(missEv)
+		return nil
 	})
-	if err != nil {
-		return
-	}
 
-	runtime, err := builder.Build()
-	if err != nil {
-		return
+	hitEv, _ = events.DefineEvent[*state, patch](func(ctx events.Context[*state, patch]) error {
+		p := ctx.Patch()
+		p.trace = append(p.trace, "hit "+p.coord)
+		return nil
+	})
+
+	missEv, _ = events.DefineEvent[*state, patch](func(ctx events.Context[*state, patch]) error {
+		p := ctx.Patch()
+		p.trace = append(p.trace, "miss "+p.coord)
+		return nil
+	})
+
+	fireCmd, _ := events.DefineCommand[*state, patch, input](func(ctx events.Context[*state, patch], in input) error {
+		p := ctx.Patch()
+		p.coord = in.Coordinate
+		p.hit = in.Hit
+		p.trace = append(p.trace, "fire "+in.Coordinate)
+		ctx.Emit(resolveEv)
+		return nil
+	})
+
+	runtime := events.NewRuntime()
+	s := &state{}
+
+	first, _ := events.ExecuteCommand(runtime, s, fireCmd, input{Coordinate: "B4", Hit: true}, func() *patch {
+		return &patch{trace: make([]string, 0, 4)}
+	})
+	second, _ := events.ExecuteCommand(runtime, s, fireCmd, input{Coordinate: "A1", Hit: false}, func() *patch {
+		return &patch{trace: make([]string, 0, 4)}
+	})
+
+	for _, line := range first.trace {
+		fmt.Println(line)
 	}
-	_ = events.ExecuteCommand(runtime, fire, fireCommand{Coordinate: "B4", Hit: true})
-	_ = events.ExecuteCommand(runtime, fire, fireCommand{Coordinate: "A1", Hit: false})
+	for _, line := range second.trace {
+		fmt.Println(line)
+	}
 
 	// Output:
 	// fire B4
