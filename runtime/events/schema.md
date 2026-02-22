@@ -8,6 +8,7 @@ Scope: trigger rights for `runtime/events`.
 external/api or automation callback
   -> root command (`events.ExecuteCommand`)
     -> command handler (consumes input)
+      -> optional turn step (`turns.Step(actor, decision)`)
       -> emitted events (`emit(event)`)
         -> event handlers (no payload)
           -> patch output

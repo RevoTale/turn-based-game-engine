@@ -137,25 +137,26 @@ func TestTurnbasedIntegration_Registry(t *testing.T) {
 		gridBeta:  betaLayer,
 	}
 
-	engine, err := turnbased.New[playerID, action]([]playerID{1, 2}, 1)
+	engine, err := turnbased.New[playerID]([]playerID{1, 2}, 1)
 	require.NoError(t, err)
 
-	resolve := func(actor playerID, act action) (turnbased.ActionOutcome[playerID], error) {
+	applyAction := func(actor playerID, act action) error {
 		layer, ok := layers[act.Grid]
 		if !ok {
-			return turnbased.ActionOutcome[playerID]{}, fmt.Errorf("%w: %v", grid2d.ErrGridNotFound, act.Grid)
+			return fmt.Errorf("%w: %v", grid2d.ErrGridNotFound, act.Grid)
 		}
 		if err := layer.Set(act.Pos, act.State); err != nil {
-			return turnbased.ActionOutcome[playerID]{}, err
+			return err
 		}
-		return turnbased.PassTurn[playerID](), nil
+		_, err := engine.Step(actor, turnbased.NextTurn[playerID]())
+		return err
 	}
 
-	_, err = engine.Act(1, action{Grid: gridAlpha, Pos: grid2d.Position{X: 2, Y: 1}, State: "hit"}, resolve)
+	err = applyAction(1, action{Grid: gridAlpha, Pos: grid2d.Position{X: 2, Y: 1}, State: "hit"})
 	require.NoError(t, err)
 	assert.Equal(t, playerID(2), engine.CurrentPlayer())
 
-	_, err = engine.Act(2, action{Grid: gridBeta, Pos: grid2d.Position{X: 7, Y: 3}, State: "burn"}, resolve)
+	err = applyAction(2, action{Grid: gridBeta, Pos: grid2d.Position{X: 7, Y: 3}, State: "burn"})
 	require.NoError(t, err)
 	assert.Equal(t, playerID(1), engine.CurrentPlayer())
 
@@ -169,7 +170,7 @@ func TestTurnbasedIntegration_Registry(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "burn", value)
 
-	_, err = engine.Act(1, action{Grid: gridAlpha, Pos: grid2d.Position{X: 2, Y: 2}, State: "invalid"}, resolve)
+	err = applyAction(1, action{Grid: gridAlpha, Pos: grid2d.Position{X: 2, Y: 2}, State: "invalid"})
 	require.Error(t, err)
 	assert.ErrorIs(t, err, grid2d.ErrOutOfBounds)
 	assert.Equal(t, playerID(1), engine.CurrentPlayer())

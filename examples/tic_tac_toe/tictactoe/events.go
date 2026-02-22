@@ -19,12 +19,12 @@ type gamePatch struct {
 	movePrepared bool
 	move         Move
 
-	lastActor   Player
-	lastOutcome turnbased.ActionOutcome[Player]
-	lastApplied bool
+	lastActor    Player
+	lastDecision turnbased.Decision[Player]
+	lastStep     turnbased.Delta[Player]
+	lastApplied  bool
 
 	boardWrites []boardWrite
-	nextTurns   *turnbased.Engine[Player, Move]
 	log         []string
 }
 
@@ -32,6 +32,7 @@ type gameEvents struct {
 	play          events.Command[*gameState, gamePatch, Move]
 	resolveMove   events.Event[*gameState, gamePatch]
 	moveApplied   events.Event[*gameState, gamePatch]
+	turnChanged   events.Event[*gameState, gamePatch]
 	matchFinished events.Event[*gameState, gamePatch]
 }
 
@@ -45,6 +46,7 @@ type resolveContext interface {
 	State() *gameState
 	Patch() *gamePatch
 	EmitMoveApplied()
+	EmitTurnChanged()
 	EmitMatchFinished()
 }
 
@@ -66,6 +68,10 @@ func (c resolveCtx) EmitMoveApplied() {
 	c.Emit(c.ev.moveApplied)
 }
 
+func (c resolveCtx) EmitTurnChanged() {
+	c.Emit(c.ev.turnChanged)
+}
+
 func (c resolveCtx) EmitMatchFinished() {
 	c.Emit(c.ev.matchFinished)
 }
@@ -75,6 +81,10 @@ func (g *Game) registerEvents() (gameEvents, error) {
 	var err error
 
 	registered.moveApplied, err = events.DefineEvent(handleMoveApplied)
+	if err != nil {
+		return gameEvents{}, err
+	}
+	registered.turnChanged, err = events.DefineEvent(handleTurnChanged)
 	if err != nil {
 		return gameEvents{}, err
 	}
@@ -130,19 +140,22 @@ func handleResolveMove(ctx resolveContext) error {
 		return errMoveNotPrepared
 	}
 
-	actor, outcome, nextTurns, writes, err := applyMove(ctx.State(), patch, patch.move)
+	actor, stepDecision, stepDelta, writes, err := applyMove(ctx.State(), patch, patch.move)
 	if err != nil {
 		return err
 	}
 
 	patch.lastActor = actor
-	patch.lastOutcome = outcome
+	patch.lastDecision = stepDecision
+	patch.lastStep = stepDelta
 	patch.lastApplied = true
-	patch.nextTurns = nextTurns
 	patch.boardWrites = append(patch.boardWrites, writes...)
 
 	ctx.EmitMoveApplied()
-	if outcome.Result() != turnbased.MatchResultOngoing {
+	if stepDelta.TurnChanged {
+		ctx.EmitTurnChanged()
+	}
+	if stepDelta.IsTerminal {
 		ctx.EmitMatchFinished()
 	}
 	return nil
@@ -153,7 +166,16 @@ func handleMoveApplied(ctx events.Context[*gameState, gamePatch]) error {
 	if !patch.lastApplied {
 		return nil
 	}
-	patch.log = append(patch.log, formatMoveLog(patch.lastActor, patch.move.Index))
+	patch.log = append(patch.log, formatMoveLog(patch.lastStep.Actor, patch.move.Index))
+	return nil
+}
+
+func handleTurnChanged(ctx events.Context[*gameState, gamePatch]) error {
+	patch := ctx.Patch()
+	if !patch.lastApplied || !patch.lastStep.TurnChanged {
+		return nil
+	}
+	patch.log = append(patch.log, formatTurnChangedLog(patch.lastStep.PreviousPlayer, patch.lastStep.CurrentPlayer))
 	return nil
 }
 
@@ -162,6 +184,6 @@ func handleMatchFinished(ctx events.Context[*gameState, gamePatch]) error {
 	if !patch.lastApplied {
 		return nil
 	}
-	patch.log = append(patch.log, formatMatchLog(patch.lastOutcome))
+	patch.log = append(patch.log, formatMatchLog(patch.lastStep))
 	return nil
 }

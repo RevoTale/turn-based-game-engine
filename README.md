@@ -26,7 +26,7 @@ Notes:
 
 - Feature: Shared domain logic
   Description: Reuse pure rule functions across commands/events.
-  Example: `actor, outcome, err := rules.ApplyMove(patch, move)`
+  Example: `decision, writes, err := rules.ApplyMove(state, patch, move)`
 
 - Feature: Typed context-driven handlers
   Description: Handlers use `Context[S,P]` for state read, patch mutation, and event emission.
@@ -74,11 +74,15 @@ Notes:
 
 - Feature: `turnbased.New(order, first)`
   Description: Create deterministic turn engine.
-  Example: `tb, err := turnbased.New[Player, Move]([]Player{"A", "B"}, "A")`
+  Example: `tb, err := turnbased.New[Player]([]Player{"A", "B"}, "A")`
 
-- Feature: `(*Engine).Act(actor, action, resolve)`
-  Description: Validate turn owner and apply one domain action.
-  Example: `outcome, err := tb.Act(player, move, resolve)`
+- Feature: `(*Engine).Step(actor, decision)`
+  Description: Validate turn owner and apply one domain decision.
+  Example: `delta, err := tb.Step(player, turnbased.NextTurn[Player]())`
+
+- Feature: `turnbased.NextTurn/KeepTurn/Win/Draw`
+  Description: Build typed turn decisions from domain rules.
+  Example: `decision := turnbased.Win(winnerID)`
 
 - Feature: `(*Engine).CurrentPlayer()`
   Description: Get player that owns the current turn.

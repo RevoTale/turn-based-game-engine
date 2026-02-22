@@ -22,7 +22,7 @@ Path: `engine/examples/tic_tac_toe/`
 
 - Feature: Shared pure rules
   Description: Domain rules are reusable functions; handlers stay thin.
-  Example: `actor, outcome, err := applyMove(statePatch, move)`
+  Example: `delta, nextTurns, writes, err := applyMove(state, patch, move)`
 
 ## Run
 

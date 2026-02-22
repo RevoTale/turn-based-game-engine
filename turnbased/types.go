@@ -12,63 +12,76 @@ const (
 	MatchResultDraw
 )
 
-// ActionOutcome describes what happens to turn state after an action.
-type ActionOutcome[P comparable] struct {
-	keepTurn bool
-	result   MatchResult
-	winner   P
+// Decision describes what the current action decided about turn flow.
+//
+// A decision is produced by domain rules and then applied via Engine.Step.
+type Decision[P comparable] struct {
+	keepTurn  bool
+	result    MatchResult
+	winner    P
+	hasWinner bool
 }
 
-// ActionResolver runs game-specific action logic.
-type ActionResolver[P comparable, A any] func(actor P, action A) (ActionOutcome[P], error)
+// Delta describes the turn engine state changes after one Step call.
+type Delta[P comparable] struct {
+	Actor          P
+	PreviousPlayer P
+	CurrentPlayer  P
+	TurnChanged    bool
+	Result         MatchResult
+	Winner         P
+	HasWinner      bool
+	IsTerminal     bool
+}
 
-// PassTurn tells the engine to move turn to the next player.
-func PassTurn[P comparable]() ActionOutcome[P] {
-	return ActionOutcome[P]{}
+// NextTurn tells the engine to move turn to the next player.
+func NextTurn[P comparable]() Decision[P] {
+	return Decision[P]{}
 }
 
 // KeepTurn tells the engine that current player acts again.
-func KeepTurn[P comparable]() ActionOutcome[P] {
-	return ActionOutcome[P]{keepTurn: true}
+func KeepTurn[P comparable]() Decision[P] {
+	return Decision[P]{keepTurn: true}
 }
 
-// WithWinner marks action result as game over with winner.
-func (o ActionOutcome[P]) WithWinner(winner P) ActionOutcome[P] {
-	o.result = MatchResultWinner
-	o.winner = winner
-	return o
+// Win marks match as finished with a winner.
+func Win[P comparable](winner P) Decision[P] {
+	return Decision[P]{
+		result:    MatchResultWinner,
+		winner:    winner,
+		hasWinner: true,
+	}
 }
 
-// WithDraw marks action result as game over with draw state.
-func (o ActionOutcome[P]) WithDraw() ActionOutcome[P] {
-	o.result = MatchResultDraw
-	var zero P
-	o.winner = zero
-	return o
+// Draw marks match as finished with draw state.
+func Draw[P comparable]() Decision[P] {
+	return Decision[P]{
+		result: MatchResultDraw,
+	}
 }
 
 // KeepsTurn reports whether current actor keeps the turn.
-func (o ActionOutcome[P]) KeepsTurn() bool {
-	return o.keepTurn
+func (d Decision[P]) KeepsTurn() bool {
+	return d.keepTurn
 }
 
-// Winner returns winner when this outcome ends the game.
+// Winner returns winner when this decision ends the game with a winner.
 //
-// Second return value is false when outcome has no winner.
-func (o ActionOutcome[P]) Winner() (P, bool) {
-	if o.result != MatchResultWinner {
+// Second return value is false when decision has no winner.
+func (d Decision[P]) Winner() (P, bool) {
+	if d.result != MatchResultWinner || !d.hasWinner {
 		var zero P
 		return zero, false
 	}
-	return o.winner, true
+	return d.winner, true
 }
 
-// Draw reports whether this outcome ends the match as a draw.
-func (o ActionOutcome[P]) Draw() bool {
-	return o.result == MatchResultDraw
+// Draw reports whether this decision ends the match as a draw.
+func (d Decision[P]) Draw() bool {
+	return d.result == MatchResultDraw
 }
 
-// Result returns terminal result of this outcome.
-func (o ActionOutcome[P]) Result() MatchResult {
-	return o.result
+// Result returns terminal result of this decision.
+func (d Decision[P]) Result() MatchResult {
+	return d.result
 }

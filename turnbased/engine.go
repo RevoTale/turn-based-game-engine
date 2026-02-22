@@ -5,7 +5,7 @@ import (
 )
 
 // Engine tracks turn order, current turn, and terminal match state.
-type Engine[P comparable, A any] struct {
+type Engine[P comparable] struct {
 	order         []P
 	indexByPlayer map[P]int
 	turnIndex     int
@@ -20,7 +20,7 @@ type Engine[P comparable, A any] struct {
 // - ErrEmptyPlayers when players is empty
 // - ErrDuplicatePlayer when players contains duplicates
 // - ErrUnknownPlayer when firstTurn is not in players
-func New[P comparable, A any](players []P, firstTurn P) (*Engine[P, A], error) {
+func New[P comparable](players []P, firstTurn P) (*Engine[P], error) {
 	if len(players) == 0 {
 		return nil, ErrEmptyPlayers
 	}
@@ -41,7 +41,7 @@ func New[P comparable, A any](players []P, firstTurn P) (*Engine[P, A], error) {
 		return nil, fmt.Errorf("%w: %v", ErrUnknownPlayer, firstTurn)
 	}
 
-	return &Engine[P, A]{
+	return &Engine[P]{
 		order:         order,
 		indexByPlayer: indexByPlayer,
 		turnIndex:     startIndex,
@@ -49,17 +49,17 @@ func New[P comparable, A any](players []P, firstTurn P) (*Engine[P, A], error) {
 }
 
 // CurrentPlayer returns the player who can act now.
-func (e *Engine[P, A]) CurrentPlayer() P {
+func (e *Engine[P]) CurrentPlayer() P {
 	return e.order[e.turnIndex]
 }
 
 // PlayerCount returns number of players in turn order.
-func (e *Engine[P, A]) PlayerCount() int {
+func (e *Engine[P]) PlayerCount() int {
 	return len(e.order)
 }
 
 // HasPlayer reports whether player is part of this game.
-func (e *Engine[P, A]) HasPlayer(player P) bool {
+func (e *Engine[P]) HasPlayer(player P) bool {
 	_, ok := e.indexByPlayer[player]
 	return ok
 }
@@ -67,7 +67,7 @@ func (e *Engine[P, A]) HasPlayer(player P) bool {
 // PlayerAt returns player at index in turn order.
 //
 // Second return value is false when index is out of range.
-func (e *Engine[P, A]) PlayerAt(index int) (P, bool) {
+func (e *Engine[P]) PlayerAt(index int) (P, bool) {
 	if index < 0 || index >= len(e.order) {
 		var zero P
 		return zero, false
@@ -78,7 +78,7 @@ func (e *Engine[P, A]) PlayerAt(index int) (P, bool) {
 // ForEachPlayer calls visit for players in turn order.
 //
 // Returning false from visit stops iteration early.
-func (e *Engine[P, A]) ForEachPlayer(visit func(player P) bool) {
+func (e *Engine[P]) ForEachPlayer(visit func(player P) bool) {
 	if visit == nil {
 		return
 	}
@@ -90,14 +90,14 @@ func (e *Engine[P, A]) ForEachPlayer(visit func(player P) bool) {
 }
 
 // IsOver reports whether the game already reached any terminal state.
-func (e *Engine[P, A]) IsOver() bool {
+func (e *Engine[P]) IsOver() bool {
 	return e.result != MatchResultOngoing
 }
 
 // Winner returns winning player when game is over.
 //
 // Second return value is false before game over.
-func (e *Engine[P, A]) Winner() (P, bool) {
+func (e *Engine[P]) Winner() (P, bool) {
 	if e.result != MatchResultWinner {
 		var zero P
 		return zero, false
@@ -106,68 +106,80 @@ func (e *Engine[P, A]) Winner() (P, bool) {
 }
 
 // IsDraw reports whether the game ended in draw.
-func (e *Engine[P, A]) IsDraw() bool {
+func (e *Engine[P]) IsDraw() bool {
 	return e.result == MatchResultDraw
 }
 
 // Result returns current terminal result of the match.
-func (e *Engine[P, A]) Result() MatchResult {
+func (e *Engine[P]) Result() MatchResult {
 	return e.result
 }
 
-// Act applies one player action through resolve callback.
+// Step applies one domain decision for the actor currently taking a turn.
 //
-// Act checks:
-// - known actor and correct turn
-// - no actions after game over
-// - winner (if provided by resolver) must be a known player
-// - outcome result must be valid
-//
-// Turn moves to next player unless outcome says to keep turn.
-// If resolve returns an error, turn state is unchanged.
-func (e *Engine[P, A]) Act(actor P, action A, resolve ActionResolver[P, A]) (ActionOutcome[P], error) {
-	if resolve == nil {
-		return ActionOutcome[P]{}, ErrNilResolver
-	}
+// The method validates actor ownership, validates decision semantics, mutates
+// turn state, and returns one Delta describing what changed.
+func (e *Engine[P]) Step(actor P, decision Decision[P]) (Delta[P], error) {
+	before := e.CurrentPlayer()
 	if e.IsOver() {
-		return ActionOutcome[P]{}, ErrGameOver
+		return Delta[P]{}, ErrGameOver
 	}
 
 	actorIndex, ok := e.indexByPlayer[actor]
 	if !ok {
-		return ActionOutcome[P]{}, fmt.Errorf("%w: %v", ErrUnknownPlayer, actor)
+		return Delta[P]{}, fmt.Errorf("%w: %v", ErrUnknownPlayer, actor)
 	}
 	if actorIndex != e.turnIndex {
-		return ActionOutcome[P]{}, ErrWrongTurn
+		return Delta[P]{}, ErrWrongTurn
 	}
 
-	outcome, err := resolve(actor, action)
-	if err != nil {
-		return ActionOutcome[P]{}, err
-	}
-
-	switch outcome.Result() {
+	switch decision.Result() {
 	case MatchResultOngoing, MatchResultWinner, MatchResultDraw:
 	default:
-		return ActionOutcome[P]{}, ErrInvalidOutcome
+		return Delta[P]{}, ErrInvalidDecision
 	}
 
-	if winner, hasWinner := outcome.Winner(); hasWinner {
+	if winner, hasWinner := decision.Winner(); hasWinner {
+		if decision.Result() != MatchResultWinner {
+			return Delta[P]{}, ErrInvalidDecision
+		}
 		if _, exists := e.indexByPlayer[winner]; !exists {
-			return ActionOutcome[P]{}, fmt.Errorf("%w: %v", ErrUnknownPlayer, winner)
+			return Delta[P]{}, fmt.Errorf("%w: %v", ErrUnknownPlayer, winner)
 		}
 		e.winner = winner
 		e.result = MatchResultWinner
-		return outcome, nil
+		return e.buildDelta(actor, before), nil
 	}
-	if outcome.Draw() {
+	if decision.Result() == MatchResultWinner {
+		return Delta[P]{}, ErrInvalidDecision
+	}
+	if decision.Draw() {
 		e.result = MatchResultDraw
-		return outcome, nil
+		return e.buildDelta(actor, before), nil
 	}
 
-	if !outcome.KeepsTurn() {
+	if !decision.KeepsTurn() {
 		e.turnIndex = (e.turnIndex + 1) % len(e.order)
 	}
 
-	return outcome, nil
+	return e.buildDelta(actor, before), nil
+}
+
+func (e *Engine[P]) buildDelta(actor P, previousPlayer P) Delta[P] {
+	current := e.CurrentPlayer()
+	delta := Delta[P]{
+		Actor:          actor,
+		PreviousPlayer: previousPlayer,
+		CurrentPlayer:  current,
+		TurnChanged:    current != previousPlayer,
+		Result:         e.result,
+		IsTerminal:     e.result != MatchResultOngoing,
+	}
+
+	if winner, ok := e.Winner(); ok {
+		delta.Winner = winner
+		delta.HasWinner = true
+	}
+
+	return delta
 }

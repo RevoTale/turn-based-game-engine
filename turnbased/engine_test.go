@@ -1,7 +1,6 @@
 package turnbased
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,174 +10,187 @@ import (
 func TestNew_ValidatesPlayers(t *testing.T) {
 	t.Parallel()
 
-	_, err := New[int, int](nil, 1)
+	_, err := New[int](nil, 1)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrEmptyPlayers)
 
-	_, err = New[int, int]([]int{1, 1}, 1)
+	_, err = New[int]([]int{1, 1}, 1)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrDuplicatePlayer)
 
-	_, err = New[int, int]([]int{1, 2}, 3)
+	_, err = New[int]([]int{1, 2}, 3)
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrUnknownPlayer)
 }
 
-func TestAct_EnforcesTurnAndRotation(t *testing.T) {
+func TestStep_EnforcesTurnAndRotation(t *testing.T) {
 	t.Parallel()
 
-	e, err := New[int, int]([]int{1, 2, 3}, 1)
+	e, err := New[int]([]int{1, 2, 3}, 1)
 	require.NoError(t, err)
 
-	_, err = e.Act(2, 0, func(actor int, action int) (ActionOutcome[int], error) {
-		return PassTurn[int](), nil
-	})
+	_, err = e.Step(2, NextTurn[int]())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrWrongTurn)
 
-	_, err = e.Act(1, 0, func(actor int, action int) (ActionOutcome[int], error) {
-		return PassTurn[int](), nil
-	})
+	delta, err := e.Step(1, NextTurn[int]())
 	require.NoError(t, err)
+	assert.Equal(t, 1, delta.Actor)
+	assert.Equal(t, 1, delta.PreviousPlayer)
+	assert.Equal(t, 2, delta.CurrentPlayer)
+	assert.True(t, delta.TurnChanged)
+	assert.False(t, delta.IsTerminal)
+	assert.Equal(t, MatchResultOngoing, delta.Result)
 	assert.Equal(t, 2, e.CurrentPlayer())
 
-	_, err = e.Act(2, 0, func(actor int, action int) (ActionOutcome[int], error) {
-		return PassTurn[int](), nil
-	})
+	_, err = e.Step(2, NextTurn[int]())
 	require.NoError(t, err)
 	assert.Equal(t, 3, e.CurrentPlayer())
 
-	_, err = e.Act(3, 0, func(actor int, action int) (ActionOutcome[int], error) {
-		return PassTurn[int](), nil
-	})
+	_, err = e.Step(3, NextTurn[int]())
 	require.NoError(t, err)
 	assert.Equal(t, 1, e.CurrentPlayer())
 }
 
-func TestAct_KeepTurn(t *testing.T) {
+func TestStep_KeepTurn(t *testing.T) {
 	t.Parallel()
 
-	e, err := New[string, int]([]string{"p1", "p2"}, "p1")
+	e, err := New[string]([]string{"p1", "p2"}, "p1")
 	require.NoError(t, err)
 
-	_, err = e.Act("p1", 42, func(actor string, action int) (ActionOutcome[string], error) {
-		return KeepTurn[string](), nil
-	})
+	delta, err := e.Step("p1", KeepTurn[string]())
 	require.NoError(t, err)
+	assert.False(t, delta.TurnChanged)
+	assert.Equal(t, "p1", delta.CurrentPlayer)
 	assert.Equal(t, "p1", e.CurrentPlayer())
 }
 
-func TestAct_WinnerFinalizesGame(t *testing.T) {
+func TestStep_WinnerFinalizesGame(t *testing.T) {
 	t.Parallel()
 
-	e, err := New[string, int]([]string{"alpha", "beta"}, "beta")
+	e, err := New[string]([]string{"alpha", "beta"}, "beta")
 	require.NoError(t, err)
 
-	winner := "beta"
-	_, err = e.Act("beta", 0, func(actor string, action int) (ActionOutcome[string], error) {
-		return PassTurn[string]().WithWinner(winner), nil
-	})
+	delta, err := e.Step("beta", Win("beta"))
 	require.NoError(t, err)
+	assert.True(t, delta.IsTerminal)
+	assert.Equal(t, MatchResultWinner, delta.Result)
+	require.True(t, delta.HasWinner)
+	assert.Equal(t, "beta", delta.Winner)
+	assert.False(t, delta.TurnChanged)
+
 	assert.True(t, e.IsOver())
 	assert.Equal(t, MatchResultWinner, e.Result())
-
-	gotWinner, ok := e.Winner()
+	winner, ok := e.Winner()
 	require.True(t, ok)
-	assert.Equal(t, winner, gotWinner)
+	assert.Equal(t, "beta", winner)
 
-	_, err = e.Act("beta", 0, func(actor string, action int) (ActionOutcome[string], error) {
-		return PassTurn[string](), nil
-	})
+	_, err = e.Step("beta", NextTurn[string]())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrGameOver)
 }
 
-func TestAct_DrawFinalizesGame(t *testing.T) {
+func TestStep_DrawFinalizesGame(t *testing.T) {
 	t.Parallel()
 
-	e, err := New[string, int]([]string{"alpha", "beta"}, "alpha")
+	e, err := New[string]([]string{"alpha", "beta"}, "alpha")
 	require.NoError(t, err)
 
-	_, err = e.Act("alpha", 0, func(actor string, action int) (ActionOutcome[string], error) {
-		return PassTurn[string]().WithDraw(), nil
-	})
+	delta, err := e.Step("alpha", Draw[string]())
 	require.NoError(t, err)
-	assert.True(t, e.IsOver())
-	assert.Equal(t, MatchResultDraw, e.Result())
+	assert.True(t, delta.IsTerminal)
+	assert.Equal(t, MatchResultDraw, delta.Result)
+	assert.False(t, delta.HasWinner)
 	assert.True(t, e.IsDraw())
 
 	_, hasWinner := e.Winner()
 	assert.False(t, hasWinner)
 
-	_, err = e.Act("beta", 0, func(actor string, action int) (ActionOutcome[string], error) {
-		return PassTurn[string](), nil
-	})
+	_, err = e.Step("beta", NextTurn[string]())
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrGameOver)
 }
 
-func TestAct_PropagatesResolverErrorWithoutChangingTurn(t *testing.T) {
+func TestStep_RejectsInvalidDecision(t *testing.T) {
 	t.Parallel()
 
-	e, err := New[string, int]([]string{"first", "second"}, "first")
+	e, err := New[string]([]string{"first", "second"}, "first")
 	require.NoError(t, err)
 
-	resolveErr := errors.New("boom")
-	_, err = e.Act("first", 0, func(actor string, action int) (ActionOutcome[string], error) {
-		return PassTurn[string](), resolveErr
+	_, err = e.Step("first", Decision[string]{
+		result: MatchResult(99),
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, resolveErr)
+	assert.ErrorIs(t, err, ErrInvalidDecision)
 	assert.Equal(t, "first", e.CurrentPlayer())
-}
+	assert.False(t, e.IsOver())
 
-func TestAct_RejectsInvalidTerminalOutcome(t *testing.T) {
-	t.Parallel()
-
-	e, err := New[string, int]([]string{"first", "second"}, "first")
-	require.NoError(t, err)
-
-	_, err = e.Act("first", 0, func(actor string, action int) (ActionOutcome[string], error) {
-		return ActionOutcome[string]{
-			result: MatchResult(99),
-		}, nil
+	_, err = e.Step("first", Decision[string]{
+		result: MatchResultWinner,
 	})
 	require.Error(t, err)
-	assert.ErrorIs(t, err, ErrInvalidOutcome)
+	assert.ErrorIs(t, err, ErrInvalidDecision)
 	assert.Equal(t, "first", e.CurrentPlayer())
 	assert.False(t, e.IsOver())
 }
 
-func TestActionOutcomeEncapsulation(t *testing.T) {
+func TestStep_RejectsUnknownWinner(t *testing.T) {
 	t.Parallel()
 
-	outcome := PassTurn[string]()
-	assert.False(t, outcome.KeepsTurn())
-	_, hasWinner := outcome.Winner()
-	assert.False(t, hasWinner)
-	assert.False(t, outcome.Draw())
-	assert.Equal(t, MatchResultOngoing, outcome.Result())
+	e, err := New[string]([]string{"first", "second"}, "first")
+	require.NoError(t, err)
 
-	outcome = KeepTurn[string]().WithWinner("p1")
-	assert.True(t, outcome.KeepsTurn())
-	winner, hasWinner := outcome.Winner()
-	require.True(t, hasWinner)
+	_, err = e.Step("first", Win("unknown"))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrUnknownPlayer)
+	assert.Equal(t, MatchResultOngoing, e.Result())
+}
+
+func TestStep_UnknownActor(t *testing.T) {
+	t.Parallel()
+
+	e, err := New[int]([]int{1, 2}, 1)
+	require.NoError(t, err)
+
+	_, err = e.Step(99, NextTurn[int]())
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrUnknownPlayer)
+}
+
+func TestDecisionHelpers(t *testing.T) {
+	t.Parallel()
+
+	next := NextTurn[string]()
+	assert.False(t, next.KeepsTurn())
+	assert.Equal(t, MatchResultOngoing, next.Result())
+	_, ok := next.Winner()
+	assert.False(t, ok)
+	assert.False(t, next.Draw())
+
+	keep := KeepTurn[string]()
+	assert.True(t, keep.KeepsTurn())
+	assert.Equal(t, MatchResultOngoing, keep.Result())
+
+	win := Win("p1")
+	assert.False(t, win.KeepsTurn())
+	assert.Equal(t, MatchResultWinner, win.Result())
+	winner, ok := win.Winner()
+	require.True(t, ok)
 	assert.Equal(t, "p1", winner)
-	assert.False(t, outcome.Draw())
-	assert.Equal(t, MatchResultWinner, outcome.Result())
+	assert.False(t, win.Draw())
 
-	outcome = PassTurn[string]().WithDraw()
-	assert.False(t, outcome.KeepsTurn())
-	assert.True(t, outcome.Draw())
-	_, hasWinner = outcome.Winner()
-	assert.False(t, hasWinner)
-	assert.Equal(t, MatchResultDraw, outcome.Result())
+	draw := Draw[string]()
+	assert.False(t, draw.KeepsTurn())
+	assert.True(t, draw.Draw())
+	assert.Equal(t, MatchResultDraw, draw.Result())
+	_, ok = draw.Winner()
+	assert.False(t, ok)
 }
 
 func TestPlayerAccessors_NoCopyAPI(t *testing.T) {
 	t.Parallel()
 
-	e, err := New[string, int]([]string{"p1", "p2", "p3"}, "p1")
+	e, err := New[string]([]string{"p1", "p2", "p3"}, "p1")
 	require.NoError(t, err)
 
 	assert.Equal(t, 3, e.PlayerCount())
@@ -198,7 +210,7 @@ func TestPlayerAccessors_NoCopyAPI(t *testing.T) {
 func TestForEachPlayer_OrderAndEarlyStop(t *testing.T) {
 	t.Parallel()
 
-	e, err := New[int, int]([]int{10, 20, 30}, 10)
+	e, err := New[int]([]int{10, 20, 30}, 10)
 	require.NoError(t, err)
 
 	visited := make([]int, 0, 3)

@@ -19,7 +19,7 @@ type Game struct {
 type gameState struct {
 	grid  *grid2d.Grid
 	board *grid2d.SparseLayer[Player]
-	turns *turnbased.Engine[Player, Move]
+	turns *turnbased.Engine[Player]
 	log   []string
 }
 
@@ -34,7 +34,7 @@ func NewGame() (*Game, error) {
 		return nil, err
 	}
 
-	turns, err := turnbased.New[Player, Move]([]Player{PlayerX, PlayerO}, PlayerX)
+	turns, err := turnbased.New[Player]([]Player{PlayerX, PlayerO}, PlayerX)
 	if err != nil {
 		return nil, err
 	}

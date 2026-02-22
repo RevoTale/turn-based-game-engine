@@ -10,6 +10,8 @@ Keep runtime behavior deterministic, sequential, and domain-agnostic.
 External/API
   -> Root command call
     -> Command
+      -> Domain rules produce turn Decision (optional)
+        -> turnbased.Step applies Decision (optional)
       -> Event chain (optional)
         -> State mutation
           -> Result
@@ -31,6 +33,10 @@ Rules:
 - Feature: Event emission
   Description: Chain internal reactions in deterministic FIFO order.
   Example: `emit(resolveShotEvent)`
+
+- Feature: Turn decision step
+  Description: Apply one validated turn decision and get typed delta.
+  Example: `delta, err := turns.Step(actor, turnbased.NextTurn[Player]())`
 
 - Feature: State lock scope
   Description: Keep one lock over the full command tree.

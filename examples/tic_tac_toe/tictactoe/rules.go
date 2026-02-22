@@ -7,36 +7,36 @@ import (
 	"github.com/RevoTale/turn-based-game-engine/turnbased"
 )
 
-func applyMove(st *gameState, patch *gamePatch, move Move) (Player, turnbased.ActionOutcome[Player], *turnbased.Engine[Player, Move], []boardWrite, error) {
+func applyMove(st *gameState, patch *gamePatch, move Move) (Player, turnbased.Decision[Player], turnbased.Delta[Player], []boardWrite, error) {
 	actor := st.turns.CurrentPlayer()
-	turns := *st.turns
 	writes := make([]boardWrite, 0, 1)
 
-	outcome, err := turns.Act(actor, move, func(actor Player, action Move) (turnbased.ActionOutcome[Player], error) {
-		pos, ok := st.grid.Position(grid2d.CellIndex(action.Index))
-		if !ok {
-			return turnbased.ActionOutcome[Player]{}, ErrMoveBounds
-		}
-		if isOccupied(st, patch, writes, pos) {
-			return turnbased.ActionOutcome[Player]{}, ErrCellBusy
-		}
-
-		writes = append(writes, boardWrite{
-			pos:    pos,
-			player: actor,
-		})
-		if hasWinner(st, patch, writes, actor) {
-			return turnbased.PassTurn[Player]().WithWinner(actor), nil
-		}
-		if isBoardFull(st, patch, writes) {
-			return turnbased.PassTurn[Player]().WithDraw(), nil
-		}
-		return turnbased.PassTurn[Player](), nil
-	})
-	if err != nil {
-		return 0, turnbased.ActionOutcome[Player]{}, nil, nil, err
+	pos, ok := st.grid.Position(grid2d.CellIndex(move.Index))
+	if !ok {
+		return 0, turnbased.Decision[Player]{}, turnbased.Delta[Player]{}, nil, ErrMoveBounds
 	}
-	return actor, outcome, &turns, writes, nil
+	if isOccupied(st, patch, writes, pos) {
+		return 0, turnbased.Decision[Player]{}, turnbased.Delta[Player]{}, nil, ErrCellBusy
+	}
+
+	writes = append(writes, boardWrite{
+		pos:    pos,
+		player: actor,
+	})
+
+	decision := turnbased.NextTurn[Player]()
+	if hasWinner(st, patch, writes, actor) {
+		decision = turnbased.Win(actor)
+	} else if isBoardFull(st, patch, writes) {
+		decision = turnbased.Draw[Player]()
+	}
+
+	turns := *st.turns
+	delta, err := turns.Step(actor, decision)
+	if err != nil {
+		return 0, turnbased.Decision[Player]{}, turnbased.Delta[Player]{}, nil, err
+	}
+	return actor, decision, delta, writes, nil
 }
 
 func applyPatch(st *gameState, patch *gamePatch) error {
@@ -49,8 +49,10 @@ func applyPatch(st *gameState, patch *gamePatch) error {
 			return err
 		}
 	}
-	if patch.nextTurns != nil {
-		st.turns = patch.nextTurns
+	if patch.lastApplied {
+		if _, err := st.turns.Step(patch.lastActor, patch.lastDecision); err != nil {
+			return err
+		}
 	}
 	if len(patch.log) > 0 {
 		st.log = append(st.log, patch.log...)
@@ -62,12 +64,18 @@ func formatMoveLog(player Player, index int) string {
 	return fmt.Sprintf("move: %c -> %d", player, index)
 }
 
-func formatMatchLog(outcome turnbased.ActionOutcome[Player]) string {
-	if outcome.Draw() {
+func formatTurnChangedLog(from Player, to Player) string {
+	return fmt.Sprintf("turn changed: %c -> %c", from, to)
+}
+
+func formatMatchLog(delta turnbased.Delta[Player]) string {
+	if delta.Result == turnbased.MatchResultDraw {
 		return "match finished: draw"
 	}
-	winner, _ := outcome.Winner()
-	return fmt.Sprintf("match finished: winner=%c", winner)
+	if delta.HasWinner {
+		return fmt.Sprintf("match finished: winner=%c", delta.Winner)
+	}
+	return "match finished"
 }
 
 func hasWinner(st *gameState, patch *gamePatch, writes []boardWrite, player Player) bool {
