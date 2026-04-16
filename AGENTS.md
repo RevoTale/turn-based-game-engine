@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Overview
-`engine/` provides domain-agnostic turn-based engine primitives used by the Sea Battle Server (private), standalone examples and future RevoTale games.
+`engine/` is a standalone Go module and git submodule that provides domain-agnostic turn-based engine primitives used by Sea Battle Server, runnable examples, and future RevoTale games.
 
 ## Base Policy Links (Load First)
 - Router: https://github.com/RevoTale/agent-docs/blob/main/AGENTS.router.md
@@ -11,9 +11,13 @@
 
 ## Local Details
 ### Packages
+- `automation/`: scoped sequential automation loops and schedulers.
+- `state/`: typed single-writer state store and version helpers.
+- `runtime/`: topic streams and delay policy helpers for integration layers.
+- `runtime/events/`: deterministic command/event execution primitives.
 - `turnbased/`: deterministic turn orchestration for multiplayer turn-based games.
 - `grid2d/`: 2D grid primitives with sparse typed state layers.
-- `runtime/`: scheduler and conditional event stream abstractions.
+- `examples/`: runnable reference integrations for engine consumers.
 
 ### Contract
 - Keep engine packages domain-agnostic.
